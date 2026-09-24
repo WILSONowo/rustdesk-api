@@ -1,6 +1,6 @@
 # 账号与通讯录第一版
 
-基于 `WILSONowo/rustdesk-api` 与 `WILSONowo/rustdesk-api-web`，工作分支均为 `codex/account-review-v1`。保留上游 MIT 许可证和版权声明。
+基于 `WILSONowo/rustdesk-api` 与 `WILSONowo/rustdesk-api-web`，工作分支均为 `feature/api-rebuild`。保留上游 MIT 许可证和版权声明。
 
 ## 行为
 
@@ -60,15 +60,15 @@ Web 与 API 分别维护，发布时需使用配套提交。请参阅 [fork 构�
 
 现有 `/opt/rustdesk` 的 `hbbs/hbbr` 继续运行。API 和网页可以部署在另一台服务器上，下面的步骤在准备承载 API 的服务器执行。账号服务使用独立 Compose 项目及独立数据卷，不挂载远控服务器私钥。`rd.example.com` 指向原远控服务器，`remote.example.com` 指向 API 服务器；若配置 AAAA，也应指向对应服务器可访问的 IPv6。
 
-1. 将两个修改后的仓库放在服务器的同一父目录下。**本地修改尚未推送时，直接在服务器 clone GitHub 默认分支不会得到这些改动。** 使用本地源码归档，或在分支推送后分别检出 `codex/account-review-v1`。
+1. 将两个修改后的仓库放在服务器的同一父目录下。**本地修改尚未推送时，直接在服务器 clone GitHub 默认分支不会得到这些改动。** 使用本地源码归档，或在分支推送后分别检出 `feature/api-rebuild`。
 
 首次部署，且两个分支均已推送后：
 
 ```bash
 mkdir -p /opt/rustdesk-accounts
 cd /opt/rustdesk-accounts
-git clone --branch codex/account-review-v1 https://github.com/WILSONowo/rustdesk-api.git
-git clone --branch codex/account-review-v1 https://github.com/WILSONowo/rustdesk-api-web.git
+git clone --branch feature/api-rebuild https://github.com/WILSONowo/rustdesk-api.git
+git clone --branch feature/api-rebuild https://github.com/WILSONowo/rustdesk-api-web.git
 ```
 
 2. 配置 API：

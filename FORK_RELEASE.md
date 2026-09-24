@@ -6,9 +6,9 @@
 
 | 仓库 | 分支 | 职责 |
 | --- | --- | --- |
-| WILSONowo/rustdesk-api | codex/account-review-v1 | 账号 API、邮件队列、数据库迁移 |
-| WILSONowo/rustdesk-api-web | codex/account-review-v1 | 管理后台与用户网页 |
-| WILSONowo/rustdesk-server | codex/api-secure-handshake | 官方 1.1.16 hbbs 的 API 登录 TCP 握手兼容 |
+| WILSONowo/rustdesk-api | feature/api-rebuild | 账号 API、邮件队列、数据库迁移 |
+| WILSONowo/rustdesk-api-web | feature/api-rebuild | 管理后台与用户网页 |
+| WILSONowo/rustdesk-server | feature/server-fixapi | 官方 1.1.16 hbbs 的 API 登录 TCP 握手兼容 |
 
 API 与 Web 应配套检出；服务端独立构建部署。客户端仓库 `rustdesk` 不属于本次修改。
 握手兼容不校验 API token，也不强制所有远控用户登录，详见服务端的 `API_HANDSHAKE.md`。
