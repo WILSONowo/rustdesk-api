@@ -64,7 +64,7 @@ func (l *Login) Login(c *gin.Context) {
 	}
 
 	if !service.AllService.UserService.CheckUserEnable(u) {
-		response.Error(c, response.TranslateMsg(c, "UserDisabled"))
+		response.Error(c, response.TranslateMsg(c, service.AllService.UserService.LoginStatusMessage(u)))
 		return
 	}
 
@@ -84,6 +84,11 @@ func (l *Login) Login(c *gin.Context) {
 		Platform: f.DeviceInfo.Os,
 	})
 
+	if ut == nil {
+		response.Error(c, response.TranslateMsg(c, "LoginFailed"))
+		return
+	}
+	loginLimiter.RemoveAttempts(clientIp)
 	c.JSON(http.StatusOK, apiResp.LoginRes{
 		AccessToken: ut.Token,
 		Type:        "access_token",
@@ -135,7 +140,10 @@ func (l *Login) Logout(c *gin.Context) {
 	u := service.AllService.UserService.CurUser(c)
 	token, ok := c.Get("token")
 	if ok {
-		service.AllService.UserService.Logout(u, token.(string))
+		if err := service.AllService.UserService.Logout(u, token.(string)); err != nil {
+			response.Error(c, response.TranslateMsg(c, "OperationFailed"))
+			return
+		}
 	}
 	c.JSON(http.StatusOK, nil)
 

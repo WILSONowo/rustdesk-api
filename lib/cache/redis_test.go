@@ -3,17 +3,14 @@ package cache
 import (
 	"fmt"
 	"github.com/go-redis/redis/v8"
+	"os"
 	"reflect"
 	"testing"
 )
 
 func TestRedisSet(t *testing.T) {
 	//rc := New("redis")
-	rc := RedisCacheInit(&redis.Options{
-		Addr:     "192.168.1.168:6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
+	rc := RedisCacheInit(redisTestOptions(t))
 	err := rc.Set("123", "ddd", 0)
 	if err != nil {
 		fmt.Println(err.Error())
@@ -22,11 +19,7 @@ func TestRedisSet(t *testing.T) {
 }
 
 func TestRedisGet(t *testing.T) {
-	rc := RedisCacheInit(&redis.Options{
-		Addr:     "192.168.1.168:6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
+	rc := RedisCacheInit(redisTestOptions(t))
 	err := rc.Set("123", "451156", 300)
 	if err != nil {
 		t.Fatalf("写入失败")
@@ -40,11 +33,7 @@ func TestRedisGet(t *testing.T) {
 }
 
 func TestRedisGetJson(t *testing.T) {
-	rc := RedisCacheInit(&redis.Options{
-		Addr:     "192.168.1.168:6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
+	rc := RedisCacheInit(redisTestOptions(t))
 	type r struct {
 		Aa string `json:"a"`
 		B  string `json:"c"`
@@ -69,11 +58,7 @@ func TestRedisGetJson(t *testing.T) {
 }
 
 func BenchmarkRSet(b *testing.B) {
-	rc := RedisCacheInit(&redis.Options{
-		Addr:     "192.168.1.168:6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
+	rc := RedisCacheInit(redisTestOptions(b))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		rc.Set("123", "{dsv}", 1000)
@@ -81,14 +66,20 @@ func BenchmarkRSet(b *testing.B) {
 }
 
 func BenchmarkRGet(b *testing.B) {
-	rc := RedisCacheInit(&redis.Options{
-		Addr:     "192.168.1.168:6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
+	rc := RedisCacheInit(redisTestOptions(b))
 	b.ResetTimer()
 	v := ""
 	for i := 0; i < b.N; i++ {
 		rc.Get("123", &v)
 	}
+}
+
+// Tests write fixed keys, so this address must point to a disposable Redis instance.
+func redisTestOptions(t testing.TB) *redis.Options {
+	t.Helper()
+	addr := os.Getenv("REDIS_TEST_ADDR")
+	if addr == "" {
+		t.Skip("set REDIS_TEST_ADDR to a disposable Redis instance")
+	}
+	return &redis.Options{Addr: addr}
 }

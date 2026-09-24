@@ -13,6 +13,7 @@ import (
 func ApiInit() {
 	gin.SetMode(global.Config.Gin.Mode)
 	g := gin.New()
+	_ = g.SetTrustedProxies(nil)
 
 	//[WARNING] You trusted all proxies, this is NOT safe. We recommend you to set a value.
 	//Please check https://pkg.go.dev/github.com/gin-gonic/gin#readme-don-t-trust-all-proxies for details.
@@ -33,7 +34,11 @@ func ApiInit() {
 	g.NoRoute(func(c *gin.Context) {
 		c.String(http.StatusNotFound, "404 not found")
 	})
-	g.Use(middleware.Logger(), middleware.Limiter(), gin.Recovery())
+	g.Use(gin.Recovery())
+	if global.Config.Gin.AccountsOrigin {
+		g.Use(middleware.AccountsOrigin())
+	}
+	g.Use(middleware.Logger(), middleware.Limiter())
 	router.WebInit(g)
 	router.Init(g)
 	router.ApiInit(g)

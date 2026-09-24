@@ -63,12 +63,15 @@ func (is *ServerCmdService) SendSocketCmd(ty string, port int, cmd string) (stri
 		tcp = "tcp"
 		addr = "127.0.0.1"
 	}
-	conn, err := net.Dial(tcp, fmt.Sprintf("%s:%v", addr, port))
+	conn, err := net.DialTimeout(tcp, fmt.Sprintf("%s:%v", addr, port), 3*time.Second)
 	if err != nil {
 		Logger.Debugf("%s connect to id server failed: %v", ty, err)
 		return "", err
 	}
 	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		return "", err
+	}
 	//发送命令
 	_, err = conn.Write([]byte(cmd))
 	if err != nil {

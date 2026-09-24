@@ -13,7 +13,7 @@ type UserForm struct {
 	Avatar   string           `json:"avatar"`
 	GroupId  uint             `json:"group_id" validate:"required"`
 	IsAdmin  *bool            `json:"is_admin" `
-	Status   model.StatusCode `json:"status" validate:"required,gte=0"`
+	Status   model.StatusCode `json:"status" validate:"required,oneof=1 2 3"`
 	Remark   string           `json:"remark"`
 }
 
@@ -50,7 +50,13 @@ type PageQuery struct {
 
 type UserQuery struct {
 	PageQuery
-	Username string `form:"username"`
+	Username string           `form:"username"`
+	Status   model.StatusCode `form:"status" binding:"oneof=0 1 2 3"`
+}
+
+type UserReviewForm struct {
+	Id      uint  `json:"id" binding:"required"`
+	Approve *bool `json:"approve" binding:"required"`
 }
 type UserPasswordForm struct {
 	Id       uint   `json:"id" validate:"required"`
@@ -67,10 +73,14 @@ type GroupUsersQuery struct {
 }
 
 type RegisterForm struct {
+	CaptchaID       string `json:"captcha_id"`
+	Captcha         string `json:"captcha"`
+	ChallengeID     string `json:"challenge_id"`
+	Code            string `json:"code"`
 	Username        string `json:"username" validate:"required,gte=2,lte=32"`
-	Email           string `json:"email"` // validate:"required,email"
-	Password        string `json:"password" validate:"required,gte=4,lte=32"`
-	ConfirmPassword string `json:"confirm_password" validate:"required,gte=4,lte=32"`
+	Email           string `json:"email" validate:"omitempty,email,max=254"`
+	Password        string `json:"password" validate:"required,gte=8,lte=32"`
+	ConfirmPassword string `json:"confirm_password" validate:"required,eqfield=Password"`
 }
 
 type UserTokenBatchDeleteForm struct {
