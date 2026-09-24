@@ -2,7 +2,20 @@
 runtime/*
 !runtime
 !runtime/cache/.gitkeep
-go.sum
 resources/admin
 release
 data/rustdeskapi.db
+deploy/.env
+artifacts/
+
+# Local credentials, runtime data and deployment packages
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.sqlite*
+*.db-wal
+*.db-shm
+*.tar.gz
+*.zip

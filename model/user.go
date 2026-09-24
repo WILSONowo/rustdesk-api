@@ -2,8 +2,9 @@ package model
 
 type User struct {
 	IdModel
-	Username string `json:"username" gorm:"default:'';not null;uniqueIndex"`
-	Email    string `json:"email" gorm:"default:'';not null;index"`
+	Username      string `json:"username" gorm:"default:'';not null;uniqueIndex"`
+	Email         string `json:"email" gorm:"default:'';not null;index"`
+	EmailVerified bool   `json:"email_verified" gorm:"default:false;not null"`
 	// Email	string     	`json:"email" `
 	Password string     `json:"-" gorm:"default:'';not null;"`
 	Nickname string     `json:"nickname" gorm:"default:'';not null;"`

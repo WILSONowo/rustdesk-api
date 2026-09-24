@@ -158,3 +158,70 @@ other = "Banned."
 description = "Register success, wait admin confirm."
 one = "Register success, wait admin confirm."
 other = "Register success, wait admin confirm."
+[UserPendingApproval]
+one = "Your account is awaiting administrator approval."
+other = "Your account is awaiting administrator approval."
+
+[UserDisabled]
+one = "This account is disabled. Contact an administrator."
+other = "This account is disabled. Contact an administrator."
+
+[LoginFailed]
+one = "Sign-in failed. Please try again later."
+other = "Sign-in failed. Please try again later."
+
+[RegistrationNotPending]
+one = "This registration is no longer pending or does not exist. Refresh the list."
+other = "This registration is no longer pending or does not exist. Refresh the list."
+
+[MailUnavailable]
+one = "Email service is not configured. Contact an administrator."
+other = "Email service is not configured. Contact an administrator."
+
+[MailRateLimited]
+one = "Too many requests or the mail quota has been reached. Try again later."
+other = "Too many requests or the mail quota has been reached. Try again later."
+
+[MailCodeInvalid]
+one = "The code is invalid, used or expired. Request another code."
+other = "The code is invalid, used or expired. Request another code."
+
+[EmailUnavailable]
+one = "This email is unavailable. Use another address or contact an administrator."
+other = "This email is unavailable. Use another address or contact an administrator."
+
+[EmailInvalid]
+one = "Enter a valid email address."
+other = "Enter a valid email address."
+
+[RegistrationFailed]
+one = "Registration failed. The username may already be in use."
+other = "Registration failed. The username may already be in use."
+
+[MailCodeRequested]
+one = "If this address is eligible, a code will be sent. Check your inbox and spam folder."
+other = "If this address is eligible, a code will be sent. Check your inbox and spam folder."
+
+[ServerCommandsDisabled]
+one = "Server commands are not enabled."
+other = "Server commands are not enabled."
+
+[ServerCommandsUnavailable]
+one = "Command interface unavailable. Check the compatible server and local connection configuration."
+other = "Command interface unavailable. Check the compatible server and local connection configuration."
+
+[ClientResourcesInvalid]
+one = "Invalid client resources. Check the platform, download URL and import code length."
+other = "Invalid client resources. Check the platform, download URL and import code length."
+
+[ClientResourcesLoadFailed]
+one = "Could not load client resources. Please try again."
+other = "Could not load client resources. Please try again."
+
+[ClientResourcesSaveFailed]
+one = "Could not save client resources. Please try again."
+other = "Could not save client resources. Please try again."
+
+[RegistrationRateLimited]
+one = "Too many registration requests. Please try again later."
+other = "Too many registration requests. Please try again later."

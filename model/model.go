@@ -9,6 +9,7 @@ type StatusCode int
 const (
 	COMMON_STATUS_ENABLE   StatusCode = 1 //通用状态 启用
 	COMMON_STATUS_DISABLED StatusCode = 2 //通用状态 禁用
+	USER_STATUS_PENDING    StatusCode = 3 //用户注册待审核
 )
 
 type IdModel struct {
