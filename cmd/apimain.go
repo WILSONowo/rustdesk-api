@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -23,7 +24,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const DatabaseVersion = 265
+const DatabaseVersion = 267
 
 // @title 管理系统API
 // @version 1.0
@@ -44,6 +45,7 @@ var rootCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		global.Logger.Info("API SERVER START")
+		go service.AllService.MailService.Run(context.Background())
 		http.ApiInit()
 	},
 }
@@ -289,8 +291,13 @@ func DatabaseAutoUpdate() {
 func Migrate(version uint) {
 	global.Logger.Info("Migrating....", version)
 	err := global.DB.AutoMigrate(
+		&model.ClientResources{},
 		&model.Version{},
 		&model.User{},
+		&model.EmailIdentity{},
+		&model.EmailChallenge{},
+		&model.MailMessage{},
+		&model.MailRate{},
 		&model.UserToken{},
 		&model.Tag{},
 		&model.AddressBook{},

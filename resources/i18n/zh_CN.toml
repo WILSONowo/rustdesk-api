@@ -160,3 +160,70 @@ other = "已被封禁。"
 description = "Register success, wait for admin confirm."
 one = "注册成功，请等待管理员审核。"
 other = "注册成功，请等待管理员审核。"
+[UserPendingApproval]
+one = "账号正在等待管理员审核，审核通过后才能登录。"
+other = "账号正在等待管理员审核，审核通过后才能登录。"
+
+[UserDisabled]
+one = "账号已禁用，请联系管理员。"
+other = "账号已禁用，请联系管理员。"
+
+[LoginFailed]
+one = "登录失败，请稍后重试。"
+other = "登录失败，请稍后重试。"
+
+[RegistrationNotPending]
+one = "该注册申请已处理或不存在，请刷新列表。"
+other = "该注册申请已处理或不存在，请刷新列表。"
+
+[MailUnavailable]
+one = "邮件服务尚未配置，请联系管理员。"
+other = "邮件服务尚未配置，请联系管理员。"
+
+[MailRateLimited]
+one = "发送或验证过于频繁，或已达到邮件发送额度，请稍后再试。"
+other = "发送或验证过于频繁，或已达到邮件发送额度，请稍后再试。"
+
+[MailCodeInvalid]
+one = "验证码无效、已使用或已过期，请重新获取。"
+other = "验证码无效、已使用或已过期，请重新获取。"
+
+[EmailUnavailable]
+one = "此邮箱暂不可绑定或注册，请使用其他邮箱或联系管理员。"
+other = "此邮箱暂不可绑定或注册，请使用其他邮箱或联系管理员。"
+
+[EmailInvalid]
+one = "请输入有效邮箱地址。"
+other = "请输入有效邮箱地址。"
+
+[RegistrationFailed]
+one = "注册失败，用户名可能已被使用。"
+other = "注册失败，用户名可能已被使用。"
+
+[MailCodeRequested]
+one = "如果邮箱可用于本次操作，验证码将发送到该邮箱，请检查收件箱或垃圾邮件。"
+other = "如果邮箱可用于本次操作，验证码将发送到该邮箱，请检查收件箱或垃圾邮件。"
+
+[ServerCommandsDisabled]
+one = "服务端命令未启用。"
+other = "服务端命令未启用。"
+
+[ServerCommandsUnavailable]
+one = "命令接口不可用，请检查兼容服务端及本机连接配置。"
+other = "命令接口不可用，请检查兼容服务端及本机连接配置。"
+
+[ClientResourcesInvalid]
+one = "客户端下载配置无效，请检查平台、链接和导入代码长度。"
+other = "客户端下载配置无效，请检查平台、链接和导入代码长度。"
+
+[ClientResourcesLoadFailed]
+one = "无法加载客户端下载配置，请稍后重试。"
+other = "无法加载客户端下载配置，请稍后重试。"
+
+[ClientResourcesSaveFailed]
+one = "无法保存客户端下载配置，请稍后重试。"
+other = "无法保存客户端下载配置，请稍后重试。"
+
+[RegistrationRateLimited]
+one = "注册操作过于频繁，请稍后再试。"
+other = "注册操作过于频繁，请稍后再试。"

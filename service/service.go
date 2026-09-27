@@ -5,6 +5,7 @@ import (
 	"github.com/lejianwen/rustdesk-api/v2/lib/jwt"
 	"github.com/lejianwen/rustdesk-api/v2/lib/lock"
 	"github.com/lejianwen/rustdesk-api/v2/model"
+	"github.com/lejianwen/rustdesk-api/v2/utils"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
@@ -24,6 +25,8 @@ type Service struct {
 	*ServerCmdService
 	*LdapService
 	*AppService
+	MailService         *MailService
+	RegistrationService *RegistrationService
 }
 
 type Dependencies struct {
@@ -49,6 +52,8 @@ func New(c *config.Config, g *gorm.DB, l *log.Logger, j *jwt.Jwt, lo lock.Locker
 	Jwt = j
 	Lock = lo
 	AllService = new(Service)
+	AllService.MailService = NewMailService(g, c.Mail)
+	AllService.RegistrationService = NewRegistrationService(g, utils.B64StringCaptchaProvider{})
 	return AllService
 }
 

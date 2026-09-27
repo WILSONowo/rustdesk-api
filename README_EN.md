@@ -333,3 +333,6 @@ Thanks to everyone who contributed!
 
 
 [lejianwen/rustdesk-server]: https://github.com/lejianwen/rustdesk-server
+# Fork account center
+
+This fork pairs with `WILSONowo/rustdesk-api-web` and includes email verification, registration review, mail notifications, shared address books and client resource settings. Start with [fork build and release notes](FORK_RELEASE.md); the upstream documentation below retains its original download targets.

@@ -12,6 +12,10 @@ import (
 type Rustdesk struct {
 }
 
+func (r *Rustdesk) CmdCapabilities(c *gin.Context) {
+	response.Success(c, gin.H{"enabled": global.Config.Admin.ServerCommandsEnabled})
+}
+
 type RustdeskCmd struct {
 	Cmd    string `json:"cmd"`
 	Option string `json:"option"`
@@ -102,6 +106,10 @@ func (r *Rustdesk) CmdUpdate(c *gin.Context) {
 }
 
 func (r *Rustdesk) SendCmd(c *gin.Context) {
+	if !global.Config.Admin.ServerCommandsEnabled {
+		response.Fail(c, 101, response.TranslateMsg(c, "ServerCommandsDisabled"))
+		return
+	}
 	rc := &RustdeskCmd{}
 	if err := c.ShouldBindJSON(rc); err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
@@ -130,7 +138,7 @@ func (r *Rustdesk) SendCmd(c *gin.Context) {
 
 	res, err := service.AllService.ServerCmdService.SendCmd(port, rc.Cmd, rc.Option)
 	if err != nil {
-		response.Fail(c, 101, err.Error())
+		response.Fail(c, 101, response.TranslateMsg(c, "ServerCommandsUnavailable"))
 		return
 	}
 	response.Success(c, res)

@@ -2,6 +2,7 @@ package admin
 
 import (
 	"fmt"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lejianwen/rustdesk-api/v2/global"
@@ -17,6 +18,11 @@ import (
 type Login struct {
 }
 
+// Authentication failures must not look like successful AJAX submissions to password managers.
+func loginFailure(c *gin.Context, code int, message string) {
+	c.JSON(http.StatusUnauthorized, response.Response{Code: code, Message: message, Data: nil})
+}
+
 // Login 登录
 // @Tags 登录
 // @Summary 登录
@@ -30,7 +36,7 @@ type Login struct {
 // @Security token
 func (ct *Login) Login(c *gin.Context) {
 	if global.Config.App.DisablePwdLogin {
-		response.Fail(c, 101, response.TranslateMsg(c, "PwdLoginDisabled"))
+		loginFailure(c, 101, response.TranslateMsg(c, "PwdLoginDisabled"))
 		return
 	}
 
@@ -44,7 +50,7 @@ func (ct *Login) Login(c *gin.Context) {
 	if err != nil {
 		loginLimiter.RecordFailedAttempt(clientIp)
 		global.Logger.Warn(fmt.Sprintf("Login Fail: %s %s %s", "ParamsError", c.RemoteIP(), clientIp))
-		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
+		loginFailure(c, 101, response.TranslateMsg(c, "ParamsError")+err.Error())
 		return
 	}
 
@@ -52,14 +58,14 @@ func (ct *Login) Login(c *gin.Context) {
 	if len(errList) > 0 {
 		loginLimiter.RecordFailedAttempt(clientIp)
 		global.Logger.Warn(fmt.Sprintf("Login Fail: %s %s %s", "ParamsError", c.RemoteIP(), clientIp))
-		response.Fail(c, 101, errList[0])
+		loginFailure(c, 101, errList[0])
 		return
 	}
 
 	// 检查是否需要验证码
 	if needCaptcha {
 		if f.CaptchaId == "" || f.Captcha == "" || !loginLimiter.VerifyCaptcha(f.CaptchaId, f.Captcha) {
-			response.Fail(c, 101, response.TranslateMsg(c, "CaptchaError"))
+			loginFailure(c, 101, response.TranslateMsg(c, "CaptchaError"))
 			return
 		}
 	}
@@ -70,19 +76,19 @@ func (ct *Login) Login(c *gin.Context) {
 		global.Logger.Warn(fmt.Sprintf("Login Fail: %s %s %s", "UsernameOrPasswordError", c.RemoteIP(), clientIp))
 		loginLimiter.RecordFailedAttempt(clientIp)
 		if _, needCaptcha = loginLimiter.CheckSecurityStatus(clientIp); needCaptcha {
-			response.Fail(c, 110, response.TranslateMsg(c, "UsernameOrPasswordError"))
+			loginFailure(c, 110, response.TranslateMsg(c, "UsernameOrPasswordError"))
 		} else {
-			response.Fail(c, 101, response.TranslateMsg(c, "UsernameOrPasswordError"))
+			loginFailure(c, 101, response.TranslateMsg(c, "UsernameOrPasswordError"))
 		}
 		return
 	}
 
 	if !service.AllService.UserService.CheckUserEnable(u) {
 		if needCaptcha {
-			response.Fail(c, 110, response.TranslateMsg(c, "UserDisabled"))
+			loginFailure(c, 110, response.TranslateMsg(c, service.AllService.UserService.LoginStatusMessage(u)))
 			return
 		}
-		response.Fail(c, 101, response.TranslateMsg(c, "UserDisabled"))
+		loginFailure(c, 101, response.TranslateMsg(c, service.AllService.UserService.LoginStatusMessage(u)))
 		return
 	}
 
@@ -96,6 +102,10 @@ func (ct *Login) Login(c *gin.Context) {
 	})
 
 	// 登录成功，清除登录限制
+	if ut == nil {
+		loginFailure(c, 101, response.TranslateMsg(c, "LoginFailed"))
+		return
+	}
 	loginLimiter.RemoveAttempts(clientIp)
 	responseLoginSuccess(c, u, ut.Token)
 }
@@ -142,7 +152,10 @@ func (ct *Login) Logout(c *gin.Context) {
 	u := service.AllService.UserService.CurUser(c)
 	token, ok := c.Get("token")
 	if ok {
-		service.AllService.UserService.Logout(u, token.(string))
+		if err := service.AllService.UserService.Logout(u, token.(string)); err != nil {
+			response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed"))
+			return
+		}
 	}
 	response.Success(c, nil)
 }
@@ -166,11 +179,12 @@ func (ct *Login) LoginOptions(c *gin.Context) {
 	}
 	ops := service.AllService.OauthService.GetOauthProviders()
 	response.Success(c, gin.H{
-		"ops":          ops,
-		"register":     global.Config.App.Register,
-		"need_captcha": needCaptcha,
-		"disable_pwd":  global.Config.App.DisablePwdLogin,
-		"auto_oidc":    global.Config.App.DisablePwdLogin && len(ops) == 1,
+		"ops":                            ops,
+		"register":                       global.Config.App.Register,
+		"registration_requires_approval": true,
+		"need_captcha":                   needCaptcha,
+		"disable_pwd":                    global.Config.App.DisablePwdLogin,
+		"auto_oidc":                      global.Config.App.DisablePwdLogin && len(ops) == 1,
 	})
 }
 

@@ -94,6 +94,10 @@ func (o *Oauth) OidcAuthQueryPre(c *gin.Context) (*model.User, *model.UserToken)
 
 	// 删除 OAuth 缓存
 	service.AllService.OauthService.DeleteOauthCache(q.Code)
+	if !service.AllService.UserService.CheckUserEnable(u) {
+		response.Error(c, response.TranslateMsg(c, service.AllService.UserService.LoginStatusMessage(u)))
+		return nil, nil
+	}
 
 	// 创建登录日志并生成用户令牌
 	ut = service.AllService.UserService.Login(u, &model.LoginLog{
@@ -239,6 +243,11 @@ func (o *Oauth) OauthCallback(c *gin.Context) {
 				})
 				return
 			}
+		}
+		if !service.AllService.UserService.CheckUserEnable(user) {
+			oauthService.DeleteOauthCache(cacheKey)
+			c.HTML(http.StatusOK, "oauth_fail.html", gin.H{"message": service.AllService.UserService.LoginStatusMessage(user)})
+			return
 		}
 		oauthCache.UserId = user.Id
 		oauthService.SetOauthCache(cacheKey, oauthCache, 0)

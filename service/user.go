@@ -1,8 +1,10 @@
 package service
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
-	"math/rand"
+	mathrand "math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -87,15 +89,26 @@ func (us *UserService) InfoByAccessToken(token string) (*model.User, *model.User
 
 // GenerateToken 生成token
 func (us *UserService) GenerateToken(u *model.User) string {
-	if len(Jwt.Key) > 0 {
+	if Jwt != nil && len(Jwt.Key) > 0 {
 		return Jwt.GenerateToken(u.Id)
 	}
-	return utils.Md5(u.Username + time.Now().String())
+	var secret [32]byte
+	if _, err := rand.Read(secret[:]); err != nil {
+		Logger.Error("Unable to generate an access token")
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(secret[:])
 }
 
 // Login 登录
 func (us *UserService) Login(u *model.User, llog *model.LoginLog) *model.UserToken {
+	if u == nil || u.Id == 0 || llog == nil || !us.CheckUserEnable(us.InfoById(u.Id)) {
+		return nil
+	}
 	token := us.GenerateToken(u)
+	if token == "" {
+		return nil
+	}
 	ut := &model.UserToken{
 		UserId:     u.Id,
 		Token:      token,
@@ -103,9 +116,17 @@ func (us *UserService) Login(u *model.User, llog *model.LoginLog) *model.UserTok
 		DeviceId:   llog.DeviceId,
 		ExpiredAt:  us.UserTokenExpireTimestamp(),
 	}
-	DB.Create(ut)
-	llog.UserTokenId = ut.UserId
-	DB.Create(llog)
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(ut).Error; err != nil {
+			return err
+		}
+		llog.UserId = u.Id
+		llog.UserTokenId = ut.Id
+		return tx.Create(llog).Error
+	}); err != nil {
+		Logger.Error("Unable to persist login session")
+		return nil
+	}
 	if llog.Uuid != "" {
 		AllService.PeerService.UuidBindUserId(llog.DeviceId, llog.Uuid, u.Id)
 	}
@@ -164,11 +185,41 @@ func (us *UserService) ListIdAndNameByGroupId(groupId uint) (res []*model.User) 
 
 // CheckUserEnable 判断用户是否禁用
 func (us *UserService) CheckUserEnable(u *model.User) bool {
-	return u.Status == model.COMMON_STATUS_ENABLE
+	return u != nil && u.Id != 0 && u.Status == model.COMMON_STATUS_ENABLE
+}
+
+func (us *UserService) LoginStatusMessage(u *model.User) string {
+	if u != nil && u.Status == model.USER_STATUS_PENDING {
+		return "UserPendingApproval"
+	}
+	return "UserDisabled"
+}
+
+// ReviewRegistration performs a single pending -> enabled/disabled transition.
+func (us *UserService) ReviewRegistration(id uint, approve bool) error {
+	status := model.COMMON_STATUS_DISABLED
+	if approve {
+		status = model.COMMON_STATUS_ENABLE
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var u model.User
+		if err := tx.First(&u, id).Error; err != nil {
+			return err
+		}
+		result := tx.Model(&model.User{}).Where("id = ? AND status = ?", id, model.USER_STATUS_PENDING).Update("status", status)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return errors.New("RegistrationNotPending")
+		}
+		return AllService.MailService.QueueReview(tx, &u, approve)
+	})
 }
 
 // Create 创建
 func (us *UserService) Create(u *model.User) error {
+	u.Username = us.formatUsername(u.Username)
 	// The initial username should be formatted, and the username should be unique
 	if us.IsUsernameExists(u.Username) {
 		return errors.New("UsernameExists")
@@ -209,11 +260,19 @@ func (us *UserService) Logout(u *model.User, token string) error {
 // Delete 删除用户和oauth信息
 func (us *UserService) Delete(u *model.User) error {
 	userCount := us.getAdminUserCount()
-	if userCount <= 1 && us.IsAdmin(u) {
+	if userCount <= 1 && us.IsAdmin(u) && us.CheckUserEnable(u) {
 		return errors.New("The last admin user cannot be deleted")
 	}
 	tx := DB.Begin()
 	// 删除用户
+	if err := tx.Where("user_id = ?", u.Id).Delete(&model.EmailIdentity{}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+	if err := tx.Where("user_id = ?", u.Id).Delete(&model.EmailChallenge{}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
 	if err := tx.Delete(u).Error; err != nil {
 		tx.Rollback()
 		return err
@@ -251,14 +310,34 @@ func (us *UserService) Delete(u *model.User) error {
 func (us *UserService) Update(u *model.User) error {
 	currentUser := us.InfoById(u.Id)
 	// 如果当前用户是管理员并且 IsAdmin 不为空，进行检查
-	if us.IsAdmin(currentUser) {
+	if us.IsAdmin(currentUser) && us.CheckUserEnable(currentUser) {
 		adminCount := us.getAdminUserCount()
 		// 如果这是唯一的管理员，确保不能禁用或取消管理员权限
-		if adminCount <= 1 && (!us.IsAdmin(u) || u.Status == model.COMMON_STATUS_DISABLED) {
+		if adminCount <= 1 && (!us.IsAdmin(u) || u.Status != model.COMMON_STATUS_ENABLE) {
 			return errors.New("The last admin user cannot be disabled or demoted")
 		}
 	}
-	return DB.Model(u).Updates(u).Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if currentUser.Email != u.Email {
+			if err := tx.Where("user_id = ?", u.Id).Delete(&model.EmailIdentity{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&model.EmailChallenge{}).Where("user_id = ?", u.Id).Update("consumed", true).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(u).Update("email_verified", false).Error; err != nil {
+				return err
+			}
+			u.EmailVerified = false
+		}
+		if err := tx.Model(u).Updates(u).Error; err != nil {
+			return err
+		}
+		if u.Status != model.COMMON_STATUS_ENABLE {
+			return tx.Where("user_id = ?", u.Id).Delete(&model.UserToken{}).Error
+		}
+		return nil
+	})
 }
 
 // FlushToken 清空token
@@ -283,17 +362,20 @@ func (us *UserService) UpdatePassword(u *model.User, password string) error {
 	if err != nil {
 		return err
 	}
-	err = DB.Model(u).Update("password", u.Password).Error
-	if err != nil {
-		return err
-	}
-	err = us.FlushToken(u)
-	return err
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(u).Update("password", u.Password).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", u.Id).Delete(&model.UserToken{}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&model.EmailChallenge{}).Where("user_id = ?", u.Id).Update("consumed", true).Error
+	})
 }
 
 // IsAdmin 是否管理员
 func (us *UserService) IsAdmin(u *model.User) bool {
-	return u != nil && *u.IsAdmin
+	return u != nil && u.IsAdmin != nil && *u.IsAdmin
 }
 
 // RouteNames
@@ -362,8 +444,10 @@ func (us *UserService) RegisterByOauth(oauthUser *model.OauthUser, op string) (e
 	user := &model.User{
 		Username: usernameUnique,
 		GroupId:  1,
+		Status:   model.USER_STATUS_PENDING,
 	}
 	oauthUser.ToUser(user, false)
+	user.Status = model.USER_STATUS_PENDING
 	tx.Create(user)
 	if user.Id == 0 {
 		tx.Rollback()
@@ -378,7 +462,7 @@ func (us *UserService) RegisterByOauth(oauthUser *model.OauthUser, op string) (e
 // GenerateUsernameByOauth 生成用户名
 func (us *UserService) GenerateUsernameByOauth(name string) string {
 	for us.IsUsernameExists(name) {
-		name += strconv.Itoa(rand.Intn(10)) // Append a random digit (0-9)
+		name += strconv.Itoa(mathrand.Intn(10)) // Append a random digit (0-9)
 	}
 	return name
 }
@@ -426,15 +510,41 @@ func (us *UserService) IsPasswordEmptyByUser(u *model.User) bool {
 }
 
 // Register 注册, 如果用户名已存在则返回nil
-func (us *UserService) Register(username string, email string, password string, status model.StatusCode) *model.User {
+func (us *UserService) Register(username string, email string, password string) *model.User {
+	username = us.formatUsername(username)
+	if email != "" {
+		var err error
+		email, err = NormalizeEmail(email)
+		if err != nil {
+			return nil
+		}
+	}
 	u := &model.User{
 		Username: username,
 		Email:    email,
 		Password: password,
 		GroupId:  1,
-		Status:   status,
+		Status:   model.USER_STATUS_PENDING,
 	}
-	err := us.Create(u)
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := checkRegistrationIdentity(tx, username, email); err != nil {
+			return err
+		}
+		hash, err := utils.EncryptPassword(password)
+		if err != nil {
+			return err
+		}
+		u.Password = hash
+		if err := tx.Create(u).Error; err != nil {
+			return err
+		}
+		if email != "" {
+			if err := tx.Create(&model.EmailIdentity{Email: email, UserID: u.Id}).Error; err != nil {
+				return err
+			}
+		}
+		return AllService.MailService.QueuePendingReview(tx, u)
+	})
 	if err != nil {
 		return nil
 	}
@@ -482,7 +592,7 @@ func (us *UserService) getUserCount() int64 {
 // helper functions, getAdminUserCount
 func (us *UserService) getAdminUserCount() int64 {
 	var count int64
-	DB.Model(&model.User{}).Where("is_admin = ?", true).Count(&count)
+	DB.Model(&model.User{}).Where("is_admin = ? AND status = ?", true, model.COMMON_STATUS_ENABLE).Count(&count)
 	return count
 }
 
@@ -491,7 +601,7 @@ func (us *UserService) UserTokenExpireTimestamp() int64 {
 	exp := Config.App.TokenExpire
 	if exp == 0 {
 		//默认七天
-		exp = 604800
+		exp = 7 * 24 * time.Hour
 	}
 	return time.Now().Add(exp).Unix()
 }
