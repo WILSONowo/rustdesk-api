@@ -1,8 +1,8 @@
 # RustDesk API
 
-本 fork 当前版本：**2.7-beta1** · [版本规则](VERSIONING.md) · [贡献者](CONTRIBUTORS.md)
+本 fork 当前版本：**2.7-beta1** · [下载](https://github.com/WILSONowo/rustdesk-api/releases/latest) · [版本信息](VERSIONING.md) · [贡献者](CONTRIBUTORS.md)
 
-> 本 fork：邮箱验证注册、管理员审核与邮件通知、登录与个人／共享通讯录、客户端下载配置。请先阅读 [fork 构建与发布](FORK_RELEASE.md)、[部署说明](ACCOUNT_V1.md) 和 [SMTP 配置](EMAIL_SETUP.md)，使用配套前端及 `Dockerfile.source` 构建。下方保留上游文档供参考，其下载地址和发布流程不代表本 fork 的构建。
+> 本 fork：邮箱验证注册、管理员审核与邮件通知、登录与个人／共享通讯录、客户端下载配置。请先阅读 [项目说明](FORK_RELEASE.md)、[部署说明](ACCOUNT_V1.md) 和 [SMTP 配置](EMAIL_SETUP.md)，使用配套前端及 `Dockerfile.source` 构建。下方保留上游文档供参考，其下载地址和发布流程不代表本 fork 的构建。
 
 [English Doc](README_EN.md)
 
