@@ -1,0 +1,44 @@
+name: rustdesk-accounts
+services:
+  api:
+    image: rustdesk-accounts:v1-local
+    build:
+      context: ..
+      dockerfile: Dockerfile.source
+      additional_contexts:
+        frontend: ../../rustdesk-api-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:21114:21114"
+    environment:
+      TZ: Asia/Shanghai
+      RUSTDESK_API_MAIL_ENABLED: ${MAIL_ENABLED:-false}
+      RUSTDESK_API_MAIL_REQUIRE_REGISTRATION_VERIFICATION: "true"
+      RUSTDESK_API_MAIL_HOST: ${MAIL_HOST:-smtp.qq.com}
+      RUSTDESK_API_MAIL_PORT: ${MAIL_PORT:-465}
+      RUSTDESK_API_MAIL_USERNAME: ${MAIL_USERNAME:-}
+      RUSTDESK_API_MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      RUSTDESK_API_MAIL_FROM: ${MAIL_FROM:-}
+      RUSTDESK_API_MAIL_FROM_NAME: ${MAIL_FROM_NAME:-RustDesk 账号中心}
+      RUSTDESK_API_MAIL_TLS: ${MAIL_TLS:-implicit}
+      RUSTDESK_API_MAIL_SEND_INTERVAL_SECONDS: ${MAIL_SEND_INTERVAL_SECONDS:-5}
+      RUSTDESK_API_MAIL_DAILY_LIMIT: ${MAIL_DAILY_LIMIT:-100}
+      RUSTDESK_API_MAIL_PUBLIC_URL: ${RUSTDESK_API_URL:-https://remote.example.com}
+      RUSTDESK_API_APP_REGISTER: "true"
+      RUSTDESK_API_APP_WEB_CLIENT: "0"
+      RUSTDESK_API_RUSTDESK_ID_SERVER: ${RUSTDESK_ID_SERVER:?Set RUSTDESK_ID_SERVER in .env}
+      RUSTDESK_API_RUSTDESK_RELAY_SERVER: ${RUSTDESK_RELAY_SERVER:?Set RUSTDESK_RELAY_SERVER in .env}
+      RUSTDESK_API_RUSTDESK_API_SERVER: ${RUSTDESK_API_URL:?Set RUSTDESK_API_URL in .env}
+      RUSTDESK_API_RUSTDESK_KEY: ${RUSTDESK_PUBLIC_KEY:?Set RUSTDESK_PUBLIC_KEY in .env}
+      RUSTDESK_API_GIN_TRUST_PROXY: ${TRUSTED_PROXY_IPS:-}
+    volumes:
+      - account-data:/app/data
+      - account-runtime:/app/runtime
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  account-data:
+  account-runtime:

@@ -1,8 +1,21 @@
 lang: "zh-CN"
+mail:
+  enabled: false
+  require-registration-verification: true
+  host: "smtp.qq.com"
+  port: 465
+  username: ""
+  password: "" # SMTP 授权码，通过部署 .env 配置，不提交真实凭据
+  from: ""
+  from-name: "RustDesk 账号中心"
+  tls: "implicit" # implicit: 465; starttls: 587; none: 仅本机测试 SMTP
+  send-interval-seconds: 5
+  daily-limit: 100 # 应用侧保守限制，不代表 QQ 邮箱承诺的额度
+  public-url: "https://remote.example.com"
 app:
-  web-client: 1  # 1:启用 0:禁用
-  register: false #是否开启注册
-  register-status: 1 # 注册用户默认状态 1:启用 2:禁用
+  web-client: 0  # 第一版仅使用桌面客户端
+  register: true # 允许注册；本分支所有新注册账号必须经管理员审核
+  register-status: 3 # 兼容旧配置字段，本分支固定为 3（待审核），不接受自动启用
   captcha-threshold: 3 #   <0:disabled, 0 always, >0:enabled
   ban-threshold: 0 # 0:disabled, >0:enabled
   show-swagger: 0 # 1:启用 0:禁用
@@ -11,6 +24,7 @@ app:
   disable-pwd-login: false #禁用密码登录
 
 admin:
+  server-commands-enabled: false # 仅在 API 同一网络空间运行兼容命令接口的 hbbs/hbbr 时启用
   title: "RustDesk API Admin"
   hello-file: "./conf/admin/hello.html"  #优先使用file
   hello: ""
@@ -22,6 +36,7 @@ gin:
   mode: "release" #release,debug,test
   resources-path: 'resources'  #对外静态文件目录
   trust-proxy: ""
+  accounts-origin: false # CDN 直接回源的账号服务：禁止缓存 API，关闭匿名遥测，限制请求体
 gorm:
   type: "sqlite"
   max-idle-conns: 10

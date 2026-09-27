@@ -6,7 +6,6 @@ import (
 	"github.com/lejianwen/rustdesk-api/v2/http/request/admin"
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
 	adResp "github.com/lejianwen/rustdesk-api/v2/http/response/admin"
-	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/service"
 	"github.com/lejianwen/rustdesk-api/v2/utils"
 	"gorm.io/gorm"
@@ -90,6 +89,9 @@ func (ct *User) List(c *gin.Context) {
 		return
 	}
 	res := service.AllService.UserService.List(query.Page, query.PageSize, func(tx *gorm.DB) {
+		if query.Status != 0 {
+			tx.Where("status = ?", query.Status)
+		}
 		if query.Username != "" {
 			tx.Where("username like ?", "%"+query.Username+"%")
 		}
@@ -320,29 +322,46 @@ func (ct *User) Register(c *gin.Context) {
 		response.Fail(c, 101, errList[0])
 		return
 	}
-	regStatus := model.StatusCode(global.Config.App.RegisterStatus)
-	// 注册状态可能未配置，默认启用
-	if regStatus != model.COMMON_STATUS_DISABLED && regStatus != model.COMMON_STATUS_ENABLE {
-		regStatus = model.COMMON_STATUS_ENABLE
+	if global.Config.Mail.RequireRegistrationVerification {
+		if !service.AllService.MailService.Ready() {
+			emailFailure(c, service.ErrMailUnavailable)
+			return
+		}
+		if len(f.ChallengeID) != 64 || len(f.Code) != 8 {
+			emailFailure(c, service.ErrMailCode)
+			return
+		}
+		if _, err := service.AllService.MailService.Register(f.Username, f.Email, f.Password, f.ChallengeID, f.Code); err != nil {
+			emailFailure(c, err)
+			return
+		}
+		response.Success(c, gin.H{"pending_approval": true, "message": response.TranslateMsg(c, "RegisterSuccessWaitAdminConfirm")})
+		return
 	}
-
-	u := service.AllService.UserService.Register(f.Username, f.Email, f.Password, regStatus)
+	// Verified-email registration is already protected by the one-time email
+	// challenge, issued only after a successful registration image captcha.
+	// Keep image verification mandatory even if email verification is disabled.
+	if err := service.AllService.RegistrationService.VerifyCaptcha(c.ClientIP(), f.CaptchaID, f.Captcha); err != nil {
+		emailFailure(c, err)
+		return
+	}
+	u := service.AllService.UserService.Register(f.Username, f.Email, f.Password)
 	if u == nil || u.Id == 0 {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed"))
 		return
 	}
-	if regStatus == model.COMMON_STATUS_DISABLED {
-		// 需要管理员审核
-		response.Fail(c, 101, response.TranslateMsg(c, "RegisterSuccessWaitAdminConfirm"))
+	response.Success(c, gin.H{"pending_approval": true, "message": response.TranslateMsg(c, "RegisterSuccessWaitAdminConfirm")})
+}
+
+func (ct *User) Review(c *gin.Context) {
+	f := &admin.UserReviewForm{}
+	if err := c.ShouldBindJSON(f); err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "ParamsError"))
 		return
 	}
-	// 注册成功后自动登录
-	ut := service.AllService.UserService.Login(u, &model.LoginLog{
-		UserId: u.Id,
-		Client: model.LoginLogClientWebAdmin,
-		Uuid:   "",
-		Ip:     c.ClientIP(),
-		Type:   model.LoginLogTypeAccount,
-	})
-	responseLoginSuccess(c, u, ut.Token)
+	if err := service.AllService.UserService.ReviewRegistration(f.Id, *f.Approve); err != nil {
+		response.Fail(c, 101, response.TranslateMsg(c, "RegistrationNotPending"))
+		return
+	}
+	response.Success(c, nil)
 }

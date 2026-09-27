@@ -1,2 +1,6 @@
 resources/web/**/* linguist-vendored
 resources/web2/**/* linguist-vendored
+*.sh text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+Dockerfile* text eol=lf

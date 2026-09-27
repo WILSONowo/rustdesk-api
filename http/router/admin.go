@@ -21,11 +21,23 @@ func Init(g *gin.Engine) {
 
 	adg := g.Group("/api/admin")
 	LoginBind(adg)
-	adg.POST("/user/register", (&admin.User{}).Register)
+	email := &admin.Email{}
+	adg.GET("/email/options", email.Options)
+	adg.POST("/email/register-code", admin.RegistrationLimit("email", 20), email.RegisterCode)
+	adg.POST("/email/reset-code", email.ResetCode)
+	adg.POST("/email/reset-password", email.Reset)
+	adg.POST("/user/register", admin.RegistrationLimit("submit", 20), (&admin.User{}).Register)
+	adg.POST("/user/registration-availability", admin.RegistrationLimit("availability", 60), (&admin.User{}).RegistrationAvailability)
+	adg.GET("/user/registration-captcha", admin.RegistrationLimit("captcha-request", 30), (&admin.User{}).RegistrationCaptcha)
 
 	ConfigBind(adg)
 
 	adg.Use(middleware.BackendUserAuth())
+	clientResources := &admin.ClientResources{}
+	adg.GET("/client-resources", clientResources.Get)
+	adg.PUT("/client-resources", middleware.AdminPrivilege(), clientResources.Save)
+	adg.POST("/email/bind-code", email.BindCode)
+	adg.POST("/email/bind", email.Bind)
 	//FileBind(adg)
 	UserBind(adg)
 	GroupBind(adg)
@@ -56,7 +68,8 @@ func Init(g *gin.Engine) {
 
 func RustdeskCmdBind(adg *gin.RouterGroup) {
 	cont := &admin.Rustdesk{}
-	rg := adg.Group("/rustdesk")
+	rg := adg.Group("/rustdesk").Use(middleware.AdminPrivilege())
+	rg.GET("/capabilities", cont.CmdCapabilities)
 	rg.POST("/sendCmd", cont.SendCmd)
 	rg.GET("/cmdList", cont.CmdList)
 	rg.POST("/cmdDelete", cont.CmdDelete)
@@ -66,7 +79,7 @@ func LoginBind(rg *gin.RouterGroup) {
 	cont := &admin.Login{}
 	rg.POST("/login", cont.Login)
 	rg.GET("/captcha", cont.Captcha)
-	rg.POST("/logout", cont.Logout)
+	rg.POST("/logout", middleware.BackendUserAuth(), cont.Logout)
 	rg.GET("/login-options", cont.LoginOptions)
 	rg.POST("/oidc/auth", cont.OidcAuth)
 	rg.GET("/oidc/auth-query", cont.OidcAuthQuery)
@@ -89,6 +102,7 @@ func UserBind(rg *gin.RouterGroup) {
 		aRP.GET("/detail/:id", cont.Detail)
 		aRP.POST("/create", cont.Create)
 		aRP.POST("/update", cont.Update)
+		aRP.POST("/review", cont.Review)
 		aRP.POST("/delete", cont.Delete)
 		aRP.POST("/changePwd", cont.UpdatePassword)
 	}

@@ -25,11 +25,12 @@ type App struct {
 	BanThreshold     int           `mapstructure:"ban-threshold"`
 }
 type Admin struct {
-	Title           string `mapstructure:"title"`
-	Hello           string `mapstructure:"hello"`
-	HelloFile       string `mapstructure:"hello-file"`
-	IdServerPort    int    `mapstructure:"id-server-port"`
-	RelayServerPort int    `mapstructure:"relay-server-port"`
+	ServerCommandsEnabled bool   `mapstructure:"server-commands-enabled"`
+	Title                 string `mapstructure:"title"`
+	Hello                 string `mapstructure:"hello"`
+	HelloFile             string `mapstructure:"hello-file"`
+	IdServerPort          int    `mapstructure:"id-server-port"`
+	RelayServerPort       int    `mapstructure:"relay-server-port"`
 }
 type Config struct {
 	Lang       string `mapstructure:"lang"`
@@ -47,6 +48,7 @@ type Config struct {
 	Rustdesk   Rustdesk
 	Proxy      Proxy
 	Ldap       Ldap
+	Mail       Mail
 }
 
 func (a *Admin) Init() {
