@@ -1,7 +1,5 @@
 # RustDesk API
 
-This fork adds email verification, registration review, mail notifications and client download settings. It pairs with [the companion Web frontend](https://github.com/WILSONowo/rustdesk-api-web). See the [project overview](FORK_RELEASE.md) and [fork downloads](https://github.com/WILSONowo/rustdesk-api/releases/latest). The documentation below is retained from upstream.
-
 This project implements the RustDesk API using Go, and includes both a web UI and web client. RustDesk is a remote
 desktop software that provides self-hosted solutions.
 

@@ -1,0 +1,150 @@
+name: Supplement beta1 assets
+'on':
+  push:
+    branches:
+    - feature/api-rebuild
+    paths:
+    - .github/workflows/backfill-beta1.yml
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: supplement-beta1
+  cancel-in-progress: false
+jobs:
+  web:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: WILSONowo/rustdesk-api-web
+        ref: fea7cb30d71cbf8c687ce7d22765614908764d87
+    - name: Verify immutable beta1 source
+      shell: bash
+      run: |
+        test "$(git rev-parse HEAD)" = fea7cb30d71cbf8c687ce7d22765614908764d87
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24.19.0
+        cache: npm
+    - run: npm ci --registry=https://registry.npmjs.org --replace-registry-host=always
+    - run: npm run build
+    - uses: actions/upload-artifact@v4
+      with:
+        name: web-dist
+        path: dist/
+        if-no-files-found: error
+  binaries:
+    needs: web
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - arch: amd64
+          os: linux
+          platform: linux/amd64
+          deb: amd64
+          runner: ubuntu-24.04
+        - arch: arm64
+          os: linux
+          platform: linux/arm64
+          deb: arm64
+          runner: ubuntu-24.04-arm
+        - arch: armv7l
+          os: linux
+          platform: linux/arm/v7
+          deb: armhf
+          runner: ubuntu-24.04
+        - arch: amd64
+          os: windows
+          platform: linux/amd64
+          deb: ''
+          runner: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: d9f0b31d8e810ff904fe8b96a55d2e192c7960fa
+    - name: Verify immutable beta1 source
+      shell: bash
+      run: |
+        test "$(git rev-parse HEAD)" = d9f0b31d8e810ff904fe8b96a55d2e192c7960fa
+    - uses: actions/download-artifact@v4
+      with:
+        name: web-dist
+        path: resources/admin
+    - uses: actions/setup-go@v5
+      with:
+        go-version: 1.24.13
+        cache: true
+    - name: Complete the locked Windows dependency checksum
+      run: go mod download github.com/inconshreveable/mousetrap@v1.1.0
+    - name: Generate API documentation with a fixed generator
+      run: |
+        go install github.com/swaggo/swag/cmd/swag@v1.16.4
+        swag init -g cmd/apimain.go --output docs/api --instanceName api --exclude http/controller/admin
+        swag init -g cmd/apimain.go --output docs/admin --instanceName admin --exclude http/controller/api
+    - uses: docker/setup-qemu-action@v3
+      if: matrix.os == 'linux'
+    - name: Compile static Linux executable
+      if: matrix.os == 'linux' && matrix.arch != 'armv7l'
+      env:
+        PLATFORM: ${{ matrix.platform }}
+      run: |
+        docker run --rm --platform "$PLATFORM" -v "$PWD:/src" -w /src golang:1.24.13-alpine3.22 \
+          sh -ec 'apk add --no-cache build-base; CGO_ENABLED=1 go build -buildvcs=false -mod=readonly -trimpath -ldflags "-s -w -linkmode external -extldflags -static" -o apimain ./cmd/apimain.go'
+    - name: Cross-compile static ARMv7 executable
+      if: matrix.arch == 'armv7l'
+      run: |
+        docker run --rm --entrypoint sh -v "$PWD:/src" -v "$(go env GOROOT):/usr/local/go:ro" \
+          -v "$(go env GOMODCACHE):/go/pkg/mod" -v "$(go env GOCACHE):/go-cache" \
+          -e GOCACHE=/go-cache -e GOPATH=/go -e GOTOOLCHAIN=local \
+          -e GOOS=linux -e GOARCH=arm -e GOARM=7 -e CGO_ENABLED=1 -e CC=arm-linux-musleabihf-gcc -w /src \
+          ghcr.io/cross-rs/armv7-unknown-linux-musleabihf:0.2.5@sha256:b4f481f30ceca34730a5723f717396d762d94f6eddd7e1cf7c7862d1377ff98c \
+          -ec '/usr/local/go/bin/go build -buildvcs=false -mod=readonly -trimpath -ldflags "-s -w -linkmode external -extldflags -static" -o apimain ./cmd/apimain.go'
+    - name: Compile Windows executable
+      if: matrix.os == 'windows'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-mingw-w64-x86-64
+        GOOS=windows GOARCH=amd64 CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 go build -buildvcs=false -mod=readonly -trimpath -ldflags '-s -w -linkmode external -extldflags -static' -o apimain.exe ./cmd/apimain.go
+    - name: Assemble upstream archive layout
+      env:
+        ARCH: ${{ matrix.arch }}
+        TARGET_OS: ${{ matrix.os }}
+      run: |
+        mkdir -p release/data release/runtime/cache release-assets
+        cp -a resources docs conf release/
+        test -s release/resources/admin/index.html
+        if [ "$TARGET_OS" = windows ]; then
+          cp apimain.exe release/
+          printf '@echo off\r\ncd /d "%%~dp0"\r\napimain.exe\r\n' > release/start.bat
+          zip -qr "release-assets/windows-$ARCH.zip" release
+        else
+          cp apimain release/
+          tar -czf "release-assets/linux-$ARCH.tar.gz" release
+        fi
+    - name: Package Debian format
+      if: matrix.os == 'linux'
+      env:
+        DEB_ARCH: ${{ matrix.deb }}
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y debhelper
+        mkdir -p debian-build/package/bin
+        cp apimain debian-build/package/bin/rustdesk-api
+        cp -a debian systemd conf resources debian-build/package/
+        mkdir -p debian-build/package/data debian-build/package/runtime
+        sed "s/{{ ARCH }}/$DEB_ARCH/" debian/control.tpl > debian-build/package/debian/control
+        VERSION=$(cat resources/version)
+        VERSION=${VERSION#v}
+        DEB_VERSION=${VERSION/-beta/~beta}
+        if [ "$DEB_ARCH" != "$(dpkg --print-architecture)" ]; then sudo apt-get install -y "crossbuild-essential-$DEB_ARCH"; fi
+        printf 'rustdesk-api-server (%s) unstable; urgency=medium\n\n  * Package release build.\n\n -- GitHub Actions <actions@github.com>  %s\n' "$DEB_VERSION" "$(date -R)" > debian-build/package/debian/changelog
+        (cd debian-build/package && dpkg-buildpackage -us -uc -b -d -a"$DEB_ARCH")
+        cp debian-build/*.deb release-assets/
+    - uses: actions/upload-artifact@v4
+      with:
+        name: api-release-${{ matrix.os }}-${{ matrix.arch }}
+        path: release-assets/
+        if-no-files-found: error

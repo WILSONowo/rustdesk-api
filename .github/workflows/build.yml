@@ -1,4 +1,4 @@
-name: Build Test
+name: Build
 
 on:
   workflow_dispatch:
@@ -26,11 +26,16 @@ on:
       WEBCLIENT_SOURCE_LOCATION:
         description: 'Web Client API Repository'
         required: true
-        default: 'https://github.com/lejianwen/rustdesk-api-web'
+        default: 'https://github.com/WILSONowo/rustdesk-api-web'
+  push:
+    tags:
+      - 'v*.*.*'  # 当推送带有版本号的 tag（例如 v1.0.0）时触发工作流
+      - 'test*'
+      - '!v*-beta*'
 
 env:
   LATEST_TAG: latest
-  WEBCLIENT_SOURCE_LOCATION: ${{ github.event.inputs.WEBCLIENT_SOURCE_LOCATION || 'https://github.com/lejianwen/rustdesk-api-web' }}
+  WEBCLIENT_SOURCE_LOCATION: ${{ github.event.inputs.WEBCLIENT_SOURCE_LOCATION || 'https://github.com/WILSONowo/rustdesk-api-web' }}
   BASE_IMAGE_NAMESPACE: ${{ github.event.inputs.BASE_IMAGE_NAMESPACE || github.actor }}
   DOCKERHUB_IMAGE_NAMESPACE: ${{ github.event.inputs.DOCKERHUB_IMAGE_NAMESPACE || github.actor }}
   GHCR_IMAGE_NAMESPACE: ${{ github.event.inputs.GHCR_IMAGE_NAMESPACE || github.actor }}
@@ -51,10 +56,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
+        with:
+          fetch-depth: 0
       - uses: actions/checkout@v4
         with:
-          repository: lejianwen/rustdesk-api-web
+          repository: WILSONowo/rustdesk-api-web
           path: rustdesk-api-web
           ref: master
 
@@ -78,6 +84,15 @@ jobs:
 
       - name: tidy
         run: go mod tidy
+
+      - name: Get tag version
+        run: |
+          TAG_VERSION="${GITHUB_REF##*/}"
+          VERSION="${TAG_VERSION#v}" 
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Write version to resources/version
+        run:  echo $VERSION > resources/version
 
       - name: swag
         run: |
@@ -129,9 +144,14 @@ jobs:
         with:
           files: |
             ${{ matrix.job.goos}}-${{ matrix.job.platform }}.${{matrix.job.file_ext}}
-          tag_name: test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Changelog
+        if: startsWith(github.ref, 'refs/tags/') && github.event_name == 'push'
+        run: npx changelogithub # or changelogithub@0.12 if ensure the stable result
+        env:
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
 
   deb-package:
     name: debian package - ${{ matrix.job.platform }}
@@ -158,6 +178,19 @@ jobs:
           DEBIAN_FRONTEND=noninteractive sudo apt install -y devscripts build-essential debhelper pkg-config ${{ matrix.job.crossbuild_package }}
           mkdir -p debian-build/${{ matrix.job.platform }}/bin
 
+      - name: Get tag version
+        id: get_tag
+        run: |
+          TAG_VERSION="${GITHUB_REF##*/}"
+          VERSION="${TAG_VERSION#v}" 
+          echo "TAG_VERSION=$TAG_VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Update changelog
+        run: |
+          DATE=$(date -R)
+          sed -i "1i rustdesk-api-server (${VERSION}) stable; urgency=medium\n\n  * Automatically generated release for version ${VERSION}.\n\n -- GitHub Actions <actions@github.com>  ${DATE}\n" debian/changelog
+
       - name: Download binaries
         uses: actions/download-artifact@v4
         with:
@@ -172,6 +205,7 @@ jobs:
       - name: Build package for ${{ matrix.job.platform }} arch
         run: |
           mv ${{ matrix.job.platform }}/release/apimain debian-build/${{ matrix.job.platform }}/bin/rustdesk-api 
+          mv ${{ matrix.job.platform }}/release/resources/admin resources
           chmod -v a+x debian-build/${{ matrix.job.platform }}/bin/*
           mkdir -p data
           cp -vr debian systemd conf data resources runtime debian-build/${{ matrix.job.platform }}/
@@ -186,10 +220,9 @@ jobs:
           path: |
             debian-build/*.deb
 
-      - name: Upload to GitHub Release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: test
           files: |
             debian-build/rustdesk-api-server_*_${{ matrix.job.debian_platform }}.deb
 
@@ -235,7 +268,7 @@ jobs:
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
           else
-            echo "TAG=test" >> $GITHUB_ENV  # Default to 'test' if not a tag
+            echo "TAG=latest" >> $GITHUB_ENV  # Default to 'latest' if not a tag
           fi
 
       - name: Extract metadata (tags, labels) for Docker
@@ -267,7 +300,23 @@ jobs:
           build-args: |
             BUILDARCH=${{ matrix.job.platform }}
           tags: |
+            ${{ env.DOCKERHUB_IMAGE_NAMESPACE }}/rustdesk-api:${{ env.LATEST_TAG }}-${{ matrix.job.platform }},
             ${{ env.DOCKERHUB_IMAGE_NAMESPACE }}/rustdesk-api:${{ env.TAG }}-${{ matrix.job.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Build and push Docker Full S6 image to Docker Hub ${{ matrix.job.platform }}
+        if: ${{ env.SKIP_DOCKER_HUB == 'false' }}  # Only run this step if SKIP_DOCKER_HUB is false
+        uses: docker/build-push-action@v5
+        with:
+          context: "."
+          file: ./Dockerfile_full_s6
+          platforms: ${{ matrix.job.docker_platform }}
+          push: true
+          provenance: false
+          build-args: |
+            BUILDARCH=${{ matrix.job.platform }}
+          tags: |
+            ${{ env.DOCKERHUB_IMAGE_NAMESPACE }}/rustdesk-api:full-s6-${{ matrix.job.platform }}
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Build and push Docker image to GHCR ${{ matrix.job.platform }}
@@ -282,7 +331,23 @@ jobs:
           build-args: |
             BUILDARCH=${{ matrix.job.platform }}
           tags: |
+            ghcr.io/${{ env.GHCR_IMAGE_NAMESPACE }}/rustdesk-api:${{ env.LATEST_TAG }}-${{ matrix.job.platform }},
             ghcr.io/${{ env.GHCR_IMAGE_NAMESPACE }}/rustdesk-api:${{ env.TAG }}-${{ matrix.job.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Build and push Docker Full S6 image to GHCR ${{ matrix.job.platform }}
+        if: ${{ env.SKIP_GHCR == 'false' }}  # Only run this step if SKIP_GHCR is false
+        uses: docker/build-push-action@v5
+        with:
+          context: "."
+          file: ./Dockerfile
+          platforms: ${{ matrix.job.docker_platform }}
+          push: true
+          provenance: false
+          build-args: |
+            BUILDARCH=${{ matrix.job.platform }}
+          tags: |
+            ghcr.io/${{ env.GHCR_IMAGE_NAMESPACE }}/rustdesk-api:full-s6-${{ matrix.job.platform }}
           labels: ${{ steps.meta.outputs.labels }}
 
   #
@@ -297,7 +362,7 @@ jobs:
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
           else
-            echo "TAG=test" >> $GITHUB_ENV  # Default to 'test' if not a tag
+            echo "TAG=latest" >> $GITHUB_ENV  # Default to 'latest' if not a tag
           fi
 
       - name: Log in to Docker Hub
@@ -333,5 +398,48 @@ jobs:
           extra-images: ghcr.io/${{ env.GHCR_IMAGE_NAMESPACE }}/rustdesk-api:${{ env.TAG }}-amd64,
             ghcr.io/${{ env.GHCR_IMAGE_NAMESPACE }}/rustdesk-api:${{ env.TAG }}-armv7l,
             ghcr.io/${{ env.GHCR_IMAGE_NAMESPACE }}/rustdesk-api:${{ env.TAG }}-arm64
+          push: true
+          amend: true
+
+      - name: Create and push manifest Docker Hub (:latest)
+        if: ${{ env.SKIP_DOCKER_HUB == 'false' }}
+        uses: Noelware/docker-manifest-action@v0.2.3
+        with:
+          base-image: ${{ env.BASE_IMAGE_NAMESPACE }}/rustdesk-api:latest
+          extra-images: ${{ env.DOCKERHUB_IMAGE_NAMESPACE }}/rustdesk-api:latest-amd64,
+            ${{ env.DOCKERHUB_IMAGE_NAMESPACE }}/rustdesk-api:latest-armv7l,
+            ${{ env.DOCKERHUB_IMAGE_NAMESPACE }}/rustdesk-api:latest-arm64
+          push: true
+
+      - name: Create and push manifest GHCR (:latest)
+        if: ${{ env.SKIP_GHCR == 'false' }}
+        uses: Noelware/docker-manifest-action@v0.2.3
+        with:
+          base-image: ghcr.io/${{ env.BASE_IMAGE_NAMESPACE }}/rustdesk-api:latest
+          extra-images: ghcr.io/${{ env.GHCR_IMAGE_NAMESPACE }}/rustdesk-api:latest-amd64,
+            ghcr.io/${{ env.GHCR_IMAGE_NAMESPACE }}/rustdesk-api:latest-armv7l,
+            ghcr.io/${{ env.GHCR_IMAGE_NAMESPACE }}/rustdesk-api:latest-arm64
+          push: true
+          amend: true
+
+      - name: Create and push Full S6 manifest Docker Hub (:version)
+        if: ${{ env.SKIP_DOCKER_HUB == 'false' }}
+        uses: Noelware/docker-manifest-action@v0.2.3
+        with:
+          base-image: ${{ env.BASE_IMAGE_NAMESPACE }}/rustdesk-api:full-s6
+          extra-images: ${{ env.DOCKERHUB_IMAGE_NAMESPACE }}/rustdesk-api:full-s6-amd64,
+            ${{ env.DOCKERHUB_IMAGE_NAMESPACE }}/rustdesk-api:full-s6-armv7l,
+            ${{ env.DOCKERHUB_IMAGE_NAMESPACE }}/rustdesk-api:full-s6-arm64
+          push: true
+          amend: true
+
+      - name: Create and push Full S6 manifest GHCR (:latest)
+        if: ${{ env.SKIP_GHCR == 'false' }}
+        uses: Noelware/docker-manifest-action@v0.2.3
+        with:
+          base-image: ghcr.io/${{ env.BASE_IMAGE_NAMESPACE }}/rustdesk-api:full-s6
+          extra-images: ghcr.io/${{ env.GHCR_IMAGE_NAMESPACE }}/rustdesk-api:full-s6-amd64,
+            ghcr.io/${{ env.GHCR_IMAGE_NAMESPACE }}/rustdesk-api:full-s6-armv7l,
+            ghcr.io/${{ env.GHCR_IMAGE_NAMESPACE }}/rustdesk-api:full-s6-arm64
           push: true
           amend: true

@@ -1,0 +1,285 @@
+name: Fork release
+on:
+  push:
+    tags: ['v*-beta*']
+  workflow_dispatch:
+    inputs:
+      publish_images:
+        description: Push the reviewed versioned images to GHCR
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: fork-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+jobs:
+  sources:
+    runs-on: ubuntu-24.04
+    outputs:
+      web_ref: ${{ steps.sources.outputs.web_ref }}
+      server_ref: ${{ steps.sources.outputs.server_ref }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: sources
+        name: Validate version and pinned source commits
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          test "$GITHUB_REF_TYPE" = tag
+          test "$RELEASE_TAG" = "$(cat resources/version)"
+          python3 - <<'PY'
+          import json, os, re
+          sources = json.load(open('.github/release-sources.json'))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              for name in ('web', 'server'):
+                  ref = sources[name]['commit']
+                  assert re.fullmatch('[0-9a-f]{40}', ref)
+                  out.write(f'{name}_ref={ref}\n')
+          PY
+  web:
+    needs: sources
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: WILSONowo/rustdesk-api-web
+          ref: ${{ needs.sources.outputs.web_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+          cache: npm
+      - run: npm ci --registry=https://registry.npmjs.org --replace-registry-host=always
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist/
+          if-no-files-found: error
+  binaries:
+    needs: web
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: amd64, os: linux, platform: linux/amd64, deb: amd64, runner: ubuntu-24.04}
+          - {arch: arm64, os: linux, platform: linux/arm64, deb: arm64, runner: ubuntu-24.04-arm}
+          - {arch: armv7l, os: linux, platform: linux/arm/v7, deb: armhf, runner: ubuntu-24.04}
+          - {arch: amd64, os: windows, platform: linux/amd64, deb: '', runner: ubuntu-24.04}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: resources/admin
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.13'
+          cache: true
+      - name: Generate API documentation with a fixed generator
+        run: |
+          go install github.com/swaggo/swag/cmd/swag@v1.16.4
+          swag init -g cmd/apimain.go --output docs/api --instanceName api --exclude http/controller/admin
+          swag init -g cmd/apimain.go --output docs/admin --instanceName admin --exclude http/controller/api
+      - uses: docker/setup-qemu-action@v3
+        if: matrix.os == 'linux'
+      - name: Compile static Linux executable
+        if: matrix.os == 'linux' && matrix.arch != 'armv7l'
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          docker run --rm --platform "$PLATFORM" -v "$PWD:/src" -w /src golang:1.24.13-alpine3.22 \
+            sh -ec 'apk add --no-cache build-base; CGO_ENABLED=1 go build -buildvcs=false -mod=readonly -trimpath -ldflags "-s -w -linkmode external -extldflags -static" -o apimain ./cmd/apimain.go'
+      - name: Cross-compile static ARMv7 executable
+        if: matrix.arch == 'armv7l'
+        run: |
+          docker run --rm --entrypoint sh -v "$PWD:/src" -v "$(go env GOROOT):/usr/local/go:ro" \
+            -v "$(go env GOMODCACHE):/go/pkg/mod" -v "$(go env GOCACHE):/go-cache" \
+            -e GOCACHE=/go-cache -e GOPATH=/go -e GOTOOLCHAIN=local \
+            -e GOOS=linux -e GOARCH=arm -e GOARM=7 -e CGO_ENABLED=1 -e CC=arm-linux-musleabihf-gcc -w /src \
+            ghcr.io/cross-rs/armv7-unknown-linux-musleabihf:0.2.5@sha256:b4f481f30ceca34730a5723f717396d762d94f6eddd7e1cf7c7862d1377ff98c \
+            -ec '/usr/local/go/bin/go build -buildvcs=false -mod=readonly -trimpath -ldflags "-s -w -linkmode external -extldflags -static" -o apimain ./cmd/apimain.go'
+      - name: Compile Windows executable
+        if: matrix.os == 'windows'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-x86-64
+          GOOS=windows GOARCH=amd64 CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 go build -buildvcs=false -mod=readonly -trimpath -ldflags '-s -w -linkmode external -extldflags -static' -o apimain.exe ./cmd/apimain.go
+      - name: Assemble upstream archive layout
+        env:
+          ARCH: ${{ matrix.arch }}
+          TARGET_OS: ${{ matrix.os }}
+        run: |
+          mkdir -p release/data release/runtime/cache release-assets
+          cp -a resources docs conf release/
+          test -s release/resources/admin/index.html
+          if [ "$TARGET_OS" = windows ]; then
+            cp apimain.exe release/
+            printf '@echo off\r\ncd /d "%%~dp0"\r\napimain.exe\r\n' > release/start.bat
+            zip -qr "release-assets/windows-$ARCH.zip" release
+          else
+            cp apimain release/
+            tar -czf "release-assets/linux-$ARCH.tar.gz" release
+          fi
+      - name: Package Debian format
+        if: matrix.os == 'linux'
+        env:
+          DEB_ARCH: ${{ matrix.deb }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y debhelper
+          mkdir -p debian-build/package/bin
+          cp apimain debian-build/package/bin/rustdesk-api
+          cp -a debian systemd conf resources debian-build/package/
+          mkdir -p debian-build/package/data debian-build/package/runtime
+          sed "s/{{ ARCH }}/$DEB_ARCH/" debian/control.tpl > debian-build/package/debian/control
+          VERSION=$(cat resources/version)
+          VERSION=${VERSION#v}
+          DEB_VERSION=${VERSION/-beta/~beta}
+          if [ "$DEB_ARCH" != "$(dpkg --print-architecture)" ]; then sudo apt-get install -y "crossbuild-essential-$DEB_ARCH"; fi
+          printf 'rustdesk-api-server (%s) unstable; urgency=medium\n\n  * Package release build.\n\n -- GitHub Actions <actions@github.com>  %s\n' "$DEB_VERSION" "$(date -R)" > debian-build/package/debian/changelog
+          (cd debian-build/package && dpkg-buildpackage -us -uc -b -d -a"$DEB_ARCH")
+          cp debian-build/*.deb release-assets/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api-release-${{ matrix.os }}-${{ matrix.arch }}
+          path: release-assets/
+          if-no-files-found: error
+  server-binaries:
+    needs: sources
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: amd64, target: x86_64-unknown-linux-musl}
+          - {arch: arm64, target: aarch64-unknown-linux-musl}
+          - {arch: armv7l, target: armv7-unknown-linux-musleabihf}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: WILSONowo/rustdesk-server
+          ref: ${{ needs.sources.outputs.server_ref }}
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: server-${{ matrix.target }}
+      - run: cargo install cross --version 0.2.5 --locked
+      - run: cross build --locked --release --all-features --target "$TARGET"
+        env:
+          TARGET: ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-binaries-${{ matrix.arch }}
+          path: |
+            target/${{ matrix.target }}/release/hbbs
+            target/${{ matrix.target }}/release/hbbr
+            target/${{ matrix.target }}/release/rustdesk-utils
+          if-no-files-found: error
+  draft:
+    if: ${{ !inputs.publish_images }}
+    needs: binaries
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: api-release-*
+          merge-multiple: true
+          path: release-assets
+      - name: Prepare complete draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 .github/scripts/draft-release.py --tag "$RELEASE_TAG" --assets release-assets --expected 7
+  images:
+    needs: [sources, binaries, server-binaries]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: amd64, platform: linux/amd64, s6: x86_64}
+          - {arch: arm64, platform: linux/arm64, s6: aarch64}
+          - {arch: armv7l, platform: linux/arm/v7, s6: armhf}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: WILSONowo/rustdesk-server
+          ref: ${{ needs.sources.outputs.server_ref }}
+          path: server-source
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-binaries-${{ matrix.arch }}
+          path: server-source/docker/rootfs/usr/bin
+      - uses: actions/download-artifact@v4
+        with:
+          name: api-release-linux-${{ matrix.arch }}
+          path: archives
+      - uses: docker/setup-qemu-action@v3
+      - name: Build API and full-s6 with the pinned custom server
+        env:
+          ARCH: ${{ matrix.arch }}
+          PLATFORM: ${{ matrix.platform }}
+          S6_ARCH: ${{ matrix.s6 }}
+        run: |
+          mkdir "$ARCH" image-assets
+          tar -xzf "archives/linux-$ARCH.tar.gz" -C "$ARCH"
+          chmod +x server-source/docker/rootfs/usr/bin/*
+          docker build --platform "$PLATFORM" --build-arg "S6_ARCH=$S6_ARCH" -t fork-server-base server-source/docker
+          docker build --platform "$PLATFORM" --build-arg "BUILDARCH=$ARCH" -t fork-api -f Dockerfile .
+          docker build --platform "$PLATFORM" --build-arg "BUILDARCH=$ARCH" --build-arg SERVER_IMAGE=fork-server-base -t fork-api-full-s6 -f Dockerfile_full_s6 .
+          docker save fork-api fork-api-full-s6 | gzip > image-assets/api-images.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api-images-${{ matrix.arch }}
+          path: image-assets/
+      - uses: docker/login-action@v3
+        if: inputs.publish_images
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Push reviewed version only
+        if: inputs.publish_images
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          OWNER=${GITHUB_REPOSITORY_OWNER,,}
+          docker tag fork-api "ghcr.io/$OWNER/rustdesk-api:$RELEASE_TAG-$ARCH"
+          docker tag fork-api-full-s6 "ghcr.io/$OWNER/rustdesk-api:$RELEASE_TAG-full-s6-$ARCH"
+          docker push "ghcr.io/$OWNER/rustdesk-api:$RELEASE_TAG-$ARCH"
+          docker push "ghcr.io/$OWNER/rustdesk-api:$RELEASE_TAG-full-s6-$ARCH"
+  manifests:
+    if: inputs.publish_images
+    needs: images
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Publish version manifests without moving latest
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          OWNER=${GITHUB_REPOSITORY_OWNER,,}
+          for VARIANT in "$RELEASE_TAG" "$RELEASE_TAG-full-s6"; do
+            BASE="ghcr.io/$OWNER/rustdesk-api:$VARIANT"
+            docker buildx imagetools create -t "$BASE" "$BASE-amd64" "$BASE-arm64" "$BASE-armv7l"
+          done
