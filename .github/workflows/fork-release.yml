@@ -85,12 +85,21 @@ jobs:
       - uses: docker/setup-qemu-action@v3
         if: matrix.os == 'linux'
       - name: Compile static Linux executable
-        if: matrix.os == 'linux'
+        if: matrix.os == 'linux' && matrix.arch != 'armv7l'
         env:
           PLATFORM: ${{ matrix.platform }}
         run: |
           docker run --rm --platform "$PLATFORM" -v "$PWD:/src" -w /src golang:1.24.13-alpine3.22 \
             sh -ec 'apk add --no-cache build-base; CGO_ENABLED=1 go build -buildvcs=false -mod=readonly -trimpath -ldflags "-s -w -linkmode external -extldflags -static" -o apimain ./cmd/apimain.go'
+      - name: Cross-compile static ARMv7 executable
+        if: matrix.arch == 'armv7l'
+        run: |
+          docker run --rm --entrypoint sh -v "$PWD:/src" -v "$(go env GOROOT):/usr/local/go:ro" \
+            -v "$(go env GOMODCACHE):/go/pkg/mod" -v "$(go env GOCACHE):/go-cache" \
+            -e GOCACHE=/go-cache -e GOPATH=/go -e GOTOOLCHAIN=local \
+            -e GOOS=linux -e GOARCH=arm -e GOARM=7 -e CGO_ENABLED=1 -e CC=arm-linux-musleabihf-gcc -w /src \
+            ghcr.io/cross-rs/armv7-unknown-linux-musleabihf:0.2.5@sha256:b4f481f30ceca34730a5723f717396d762d94f6eddd7e1cf7c7862d1377ff98c \
+            -ec '/usr/local/go/bin/go build -buildvcs=false -mod=readonly -trimpath -ldflags "-s -w -linkmode external -extldflags -static" -o apimain ./cmd/apimain.go'
       - name: Compile Windows executable
         if: matrix.os == 'windows'
         run: |
