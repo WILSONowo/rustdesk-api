@@ -12,7 +12,7 @@ permissions:
   contents: read
 concurrency:
   group: fork-release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 jobs:
   sources:
     runs-on: ubuntu-24.04
@@ -58,15 +58,15 @@ jobs:
           if-no-files-found: error
   binaries:
     needs: web
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - {arch: amd64, os: linux, platform: linux/amd64, deb: amd64}
-          - {arch: arm64, os: linux, platform: linux/arm64, deb: arm64}
-          - {arch: armv7l, os: linux, platform: linux/arm/v7, deb: armhf}
-          - {arch: amd64, os: windows, platform: linux/amd64, deb: ''}
+          - {arch: amd64, os: linux, platform: linux/amd64, deb: amd64, runner: ubuntu-24.04}
+          - {arch: arm64, os: linux, platform: linux/arm64, deb: arm64, runner: ubuntu-24.04-arm}
+          - {arch: armv7l, os: linux, platform: linux/arm/v7, deb: armhf, runner: ubuntu-24.04}
+          - {arch: amd64, os: windows, platform: linux/amd64, deb: '', runner: ubuntu-24.04}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -128,7 +128,7 @@ jobs:
           VERSION=$(cat resources/version)
           VERSION=${VERSION#v}
           DEB_VERSION=${VERSION/-beta/~beta}
-          if [ "$DEB_ARCH" != amd64 ]; then sudo apt-get install -y "crossbuild-essential-$DEB_ARCH"; fi
+          if [ "$DEB_ARCH" != "$(dpkg --print-architecture)" ]; then sudo apt-get install -y "crossbuild-essential-$DEB_ARCH"; fi
           printf 'rustdesk-api-server (%s) unstable; urgency=medium\n\n  * Package release build.\n\n -- GitHub Actions <actions@github.com>  %s\n' "$DEB_VERSION" "$(date -R)" > debian-build/package/debian/changelog
           (cd debian-build/package && dpkg-buildpackage -us -uc -b -d -a"$DEB_ARCH")
           cp debian-build/*.deb release-assets/
