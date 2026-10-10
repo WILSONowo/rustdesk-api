@@ -1,9 +1,5 @@
 # RustDesk API
 
-当前版本：**2.7-beta1** · [下载](https://github.com/WILSONowo/rustdesk-api/releases/latest) · [版本信息](VERSIONING.md) · [贡献者](CONTRIBUTORS.md)
-
-> 基于上游项目，新增邮箱验证注册、管理员审核与邮件通知，以及客户端下载配置。功能见 [项目说明](FORK_RELEASE.md)，部署和发信见 [部署说明](ACCOUNT_V1.md)、[SMTP 配置](EMAIL_SETUP.md)。下方保留上游文档；本 fork 请使用上方下载入口和配套 Web。
-
 [English Doc](README_EN.md)
 
 本项目使用 Go 实现了 RustDesk 的 API，并包含了 Web Admin 和 Web 客户端。
@@ -337,6 +333,3 @@
 ## 感谢你的支持！如果这个项目对你有帮助，请点个⭐️鼓励一下，谢谢！
 
 [lejianwen/rustdesk-server]: https://github.com/lejianwen/rustdesk-server
-# 本分支邮箱功能
-
-配置及使用说明见 [EMAIL_SETUP.md](EMAIL_SETUP.md)。QQ 个人邮箱与自建 SMTP 均通过环境变量配置。
