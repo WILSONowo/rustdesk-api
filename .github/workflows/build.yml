@@ -31,6 +31,7 @@ on:
     tags:
       - 'v*.*.*'  # 当推送带有版本号的 tag（例如 v1.0.0）时触发工作流
       - 'test*'
+      - '!v*-beta*'
 
 env:
   LATEST_TAG: latest
