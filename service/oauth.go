@@ -35,28 +35,30 @@ type OidcEndpoint struct {
 }
 
 type OauthCacheItem struct {
-	UserId     uint   `json:"user_id"`
-	Id         string `json:"id"` //rustdesk的设备ID
-	Op         string `json:"op"`
-	Action     string `json:"action"`
-	Uuid       string `json:"uuid"`
-	DeviceName string `json:"device_name"`
-	DeviceOs   string `json:"device_os"`
-	DeviceType string `json:"device_type"`
-	OpenId     string `json:"open_id"`
-	Username   string `json:"username"`
-	Name       string `json:"name"`
-	Email      string `json:"email"`
-	Verifier   string `json:"verifier"` // used for oauth pkce
-	Nonce      string `json:"nonce"`
+	UserId        uint   `json:"user_id"`
+	Id            string `json:"id"` //rustdesk的设备ID
+	Op            string `json:"op"`
+	Action        string `json:"action"`
+	Uuid          string `json:"uuid"`
+	DeviceName    string `json:"device_name"`
+	DeviceOs      string `json:"device_os"`
+	DeviceType    string `json:"device_type"`
+	OpenId        string `json:"open_id"`
+	Username      string `json:"username"`
+	Name          string `json:"name"`
+	Email         string `json:"email"`
+	VerifiedEmail bool   `json:"verified_email"`
+	Verifier      string `json:"verifier"` // used for oauth pkce
+	Nonce         string `json:"nonce"`
 }
 
 func (oci *OauthCacheItem) ToOauthUser() *model.OauthUser {
 	return &model.OauthUser{
-		OpenId:   oci.OpenId,
-		Username: oci.Username,
-		Name:     oci.Name,
-		Email:    oci.Email,
+		OpenId:        oci.OpenId,
+		Username:      oci.Username,
+		Name:          oci.Name,
+		Email:         oci.Email,
+		VerifiedEmail: oci.VerifiedEmail,
 	}
 }
 
@@ -72,6 +74,7 @@ func (oci *OauthCacheItem) UpdateFromOauthUser(oauthUser *model.OauthUser) {
 	oci.Username = oauthUser.Username
 	oci.Name = oauthUser.Name
 	oci.Email = oauthUser.Email
+	oci.VerifiedEmail = oauthUser.VerifiedEmail
 }
 
 func (os *OauthService) GetOauthCache(key string) *OauthCacheItem {

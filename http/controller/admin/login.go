@@ -65,6 +65,7 @@ func (ct *Login) Login(c *gin.Context) {
 	// 检查是否需要验证码
 	if needCaptcha {
 		if f.CaptchaId == "" || f.Captcha == "" || !loginLimiter.VerifyCaptcha(f.CaptchaId, f.Captcha) {
+			loginLimiter.RecordFailedAttempt(clientIp)
 			loginFailure(c, 101, response.TranslateMsg(c, "CaptchaError"))
 			return
 		}
@@ -101,12 +102,11 @@ func (ct *Login) Login(c *gin.Context) {
 		Platform: f.Platform,
 	})
 
-	// 登录成功，清除登录限制
+	// 成功登录不清除同一 IP 上其他账号的失败记录。
 	if ut == nil {
 		loginFailure(c, 101, response.TranslateMsg(c, "LoginFailed"))
 		return
 	}
-	loginLimiter.RemoveAttempts(clientIp)
 	responseLoginSuccess(c, u, ut.Token)
 }
 func (ct *Login) Captcha(c *gin.Context) {

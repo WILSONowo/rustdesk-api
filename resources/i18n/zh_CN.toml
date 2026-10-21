@@ -227,3 +227,8 @@ other = "无法保存客户端下载配置，请稍后重试。"
 [RegistrationRateLimited]
 one = "注册操作过于频繁，请稍后再试。"
 other = "注册操作过于频繁，请稍后再试。"
+
+[NativeLoginThrottled]
+one = "密码尝试过多。请等待失败记录窗口过期，或使用已配置的单点登录。"
+[OauthEmailLinkRequiresVerification]
+one = "请先验证本地账号邮箱，或登录已有账号后主动绑定此第三方登录。"

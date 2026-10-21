@@ -414,7 +414,7 @@ func (us *UserService) RegisterByOauth(oauthUser *model.OauthUser, op string) (e
 	//check if this email has been registered
 	email := oauthUser.Email
 	// only email is not empty
-	if email != "" {
+	if email != "" && oauthUser.VerifiedEmail {
 		email = strings.ToLower(email)
 		// update email to oauthUser, in case it contain upper case
 		oauthUser.Email = email
@@ -429,33 +429,39 @@ func (us *UserService) RegisterByOauth(oauthUser *model.OauthUser, op string) (e
 			user = us.InfoByEmail(email)
 		}
 		if user.Id != 0 {
+			if !user.EmailVerified {
+				return errors.New("OauthEmailLinkRequiresVerification"), nil
+			}
 			ut.FromOauthUser(user.Id, oauthUser, oauthType, op)
-			DB.Create(ut)
+			if err := DB.Create(ut).Error; err != nil {
+				return err, nil
+			}
 			return nil, user
 		}
 	}
 
-	tx := DB.Begin()
 	ut = &model.UserThird{}
 	ut.FromOauthUser(0, oauthUser, oauthType, op)
-	// The initial username should be formatted
 	username := us.formatUsername(oauthUser.Username)
-	usernameUnique := us.GenerateUsernameByOauth(username)
 	user := &model.User{
-		Username: usernameUnique,
+		Username: us.GenerateUsernameByOauth(username),
 		GroupId:  1,
 		Status:   model.USER_STATUS_PENDING,
 	}
 	oauthUser.ToUser(user, false)
-	user.Status = model.USER_STATUS_PENDING
-	tx.Create(user)
-	if user.Id == 0 {
-		tx.Rollback()
-		return errors.New("OauthRegisterFailed"), user
+	// Unverified provider email is not a local account identity.
+	if !oauthUser.VerifiedEmail {
+		user.Email = ""
 	}
-	ut.UserId = user.Id
-	tx.Create(ut)
-	tx.Commit()
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(user).Error; err != nil {
+			return err
+		}
+		ut.UserId = user.Id
+		return tx.Create(ut).Error
+	}); err != nil {
+		return errors.New("OauthRegisterFailed"), nil
+	}
 	return nil, user
 }
 

@@ -35,6 +35,11 @@ func (l *Login) Login(c *gin.Context) {
 	// 检查登录限制
 	loginLimiter := global.LoginLimiter
 	clientIp := c.ClientIP()
+	// The official native client cannot answer the Web image captcha.
+	if loginLimiter.NativeLoginBlocked(clientIp) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": response.TranslateMsg(c, "NativeLoginThrottled")})
+		return
+	}
 
 	f := &api.LoginForm{}
 	err := c.ShouldBindJSON(f)
@@ -88,7 +93,6 @@ func (l *Login) Login(c *gin.Context) {
 		response.Error(c, response.TranslateMsg(c, "LoginFailed"))
 		return
 	}
-	loginLimiter.RemoveAttempts(clientIp)
 	c.JSON(http.StatusOK, apiResp.LoginRes{
 		AccessToken: ut.Token,
 		Type:        "access_token",
