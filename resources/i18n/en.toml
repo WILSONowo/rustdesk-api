@@ -225,3 +225,8 @@ other = "Could not save client resources. Please try again."
 [RegistrationRateLimited]
 one = "Too many registration requests. Please try again later."
 other = "Too many registration requests. Please try again later."
+
+[NativeLoginThrottled]
+one = "Too many password attempts. Wait for the attempt window to expire, or use the configured single sign-on."
+[OauthEmailLinkRequiresVerification]
+one = "Verify your local email or sign in to your existing account and explicitly bind this provider."

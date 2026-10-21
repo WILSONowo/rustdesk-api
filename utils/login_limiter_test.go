@@ -288,3 +288,24 @@ func TestB64CaptchaFlow(t *testing.T) {
 		t.Error("验证成功后应该重置状态")
 	}
 }
+
+func TestNativeLoginCaptchaPolicies(t *testing.T) {
+	for _, threshold := range []int{-1, 0, 3} {
+		limiter := NewLoginLimiter(SecurityPolicy{CaptchaThreshold: threshold, BanThreshold: 5})
+		if limiter.NativeLoginBlocked("test") {
+			t.Fatal("fresh native login blocked")
+		}
+		for i := 0; i < 3; i++ {
+			limiter.RecordFailedAttempt("test")
+		}
+		if limiter.NativeLoginBlocked("test") != (threshold >= 0) {
+			t.Fatalf("wrong native policy for captcha threshold %d", threshold)
+		}
+		limiter.RecordFailedAttempt("test")
+		limiter.RecordFailedAttempt("test")
+		if !limiter.NativeLoginBlocked("test") {
+			t.Fatal("native login bypassed IP ban")
+		}
+		close(limiter.cleanupStop)
+	}
+}

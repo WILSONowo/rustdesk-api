@@ -35,6 +35,8 @@ func Init(g *gin.Engine) {
 	adg.Use(middleware.BackendUserAuth())
 	clientResources := &admin.ClientResources{}
 	adg.GET("/client-resources", clientResources.Get)
+	adg.GET("/connection-readiness", (&admin.ConnectionReadiness{}).Get)
+	adg.GET("/my/device-overview", (&admin.DeviceOverview{}).List)
 	adg.PUT("/client-resources", middleware.AdminPrivilege(), clientResources.Save)
 	adg.POST("/email/bind-code", email.BindCode)
 	adg.POST("/email/bind", email.Bind)
