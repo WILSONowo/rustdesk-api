@@ -35,7 +35,7 @@ func (ct *Tag) List(c *gin.Context) {
 	query.UserId = int(u.Id)
 	res := service.AllService.TagService.List(query.Page, query.PageSize, func(tx *gorm.DB) {
 		tx.Preload("Collection", func(txc *gorm.DB) *gorm.DB {
-			return txc.Select("id,name")
+			return txc.Select("id,name").Where("user_id = ?", u.Id)
 		})
 		tx.Where("user_id = ?", query.UserId)
 		if query.CollectionId != nil && *query.CollectionId >= 0 {
@@ -70,6 +70,10 @@ func (ct *Tag) Create(c *gin.Context) {
 	t := f.ToTag()
 	u := service.AllService.UserService.CurUser(c)
 	t.UserId = u.Id
+	if t.CollectionId > 0 && !service.AllService.AddressBookService.CheckCollectionOwner(u.Id, t.CollectionId) {
+		response.Fail(c, 101, response.TranslateMsg(c, "NoAccess"))
+		return
+	}
 	err := service.AllService.TagService.Create(t)
 	if err != nil {
 		response.Fail(c, 101, response.TranslateMsg(c, "OperationFailed")+err.Error())

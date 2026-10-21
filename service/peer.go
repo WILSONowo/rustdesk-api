@@ -34,21 +34,12 @@ func (ps *PeerService) FindByUserIdAndUuid(uuid string, userId uint) *model.Peer
 
 // UuidBindUserId 绑定用户id
 func (ps *PeerService) UuidBindUserId(deviceId string, uuid string, userId uint) {
-	peer := ps.FindByUuid(uuid)
-	// 如果存在则更新
-	if peer.RowId > 0 {
-		peer.UserId = userId
-		ps.Update(peer)
-	} else {
-		// 不存在则创建
-		/*if deviceId != "" {
-			DB.Create(&model.Peer{
-				Id:     deviceId,
-				Uuid:   uuid,
-				UserId: userId,
-			})
-		}*/
+	if deviceId == "" || uuid == "" || userId == 0 {
+		return
 	}
+	// Login identifies the account, not authority to transfer an owned device.
+	DB.Model(&model.Peer{}).Where("uuid = ? AND id = ? AND user_id = 0", uuid, deviceId).
+		Update("user_id", userId)
 }
 
 // UuidUnbindUserId 解绑用户id, 用于用户注销
@@ -139,6 +130,9 @@ func (ps *PeerService) GetUuidListByIDs(ids []uint) ([]string, error) {
 // BatchDelete 批量删除, 同时也应该删除token
 func (ps *PeerService) BatchDelete(ids []uint) error {
 	uuids, err := ps.GetUuidListByIDs(ids)
+	if err != nil {
+		return err
+	}
 	err = DB.Where("row_id in (?)", ids).Delete(&model.Peer{}).Error
 	if err != nil {
 		return err

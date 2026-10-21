@@ -6,6 +6,7 @@ import (
 	"github.com/lejianwen/rustdesk-api/v2/model"
 	"gorm.io/gorm"
 	"strings"
+	"time"
 )
 
 type AddressBookService struct {
@@ -218,13 +219,13 @@ func (s *AddressBookService) CollectionInfoById(id uint) *model.AddressBookColle
 func (s *AddressBookService) CollectionReadRules(user *model.User) (res []*model.AddressBookCollectionRule) {
 	// personalRules
 	var personalRules []*model.AddressBookCollectionRule
-	tx2 := DB.Model(&model.AddressBookCollectionRule{})
+	tx2 := DB.Model(&model.AddressBookCollectionRule{}).Scopes(activeCollectionRules)
 	tx2.Where("type = ? and to_id = ? and rule > 0", model.ShareAddressBookRuleTypePersonal, user.Id).Find(&personalRules)
 	res = append(res, personalRules...)
 
 	//group
 	var groupRules []*model.AddressBookCollectionRule
-	tx3 := DB.Model(&model.AddressBookCollectionRule{})
+	tx3 := DB.Model(&model.AddressBookCollectionRule{}).Scopes(activeCollectionRules)
 	tx3.Where("type = ? and to_id = ? and rule > 0", model.ShareAddressBookRuleTypeGroup, user.GroupId).Find(&groupRules)
 	res = append(res, groupRules...)
 	return
@@ -237,7 +238,7 @@ func (s *AddressBookService) UserMaxRule(user *model.User, uid, cid uint) int {
 	}
 	max := 0
 	personalRules := &model.AddressBookCollectionRule{}
-	tx := DB.Model(personalRules)
+	tx := DB.Model(personalRules).Scopes(activeCollectionRules).Where("user_id = ?", uid)
 	tx.Where("type = ? and collection_id = ? and to_id = ?", model.ShareAddressBookRuleTypePersonal, cid, user.Id).First(&personalRules)
 	if personalRules.Id != 0 {
 		max = personalRules.Rule
@@ -247,7 +248,7 @@ func (s *AddressBookService) UserMaxRule(user *model.User, uid, cid uint) int {
 	}
 
 	groupRules := &model.AddressBookCollectionRule{}
-	tx2 := DB.Model(groupRules)
+	tx2 := DB.Model(groupRules).Scopes(activeCollectionRules).Where("user_id = ?", uid)
 	tx2.Where("type = ? and collection_id = ? and to_id = ?", model.ShareAddressBookRuleTypeGroup, cid, user.GroupId).First(&groupRules)
 	if groupRules.Id != 0 {
 		if groupRules.Rule > max {
@@ -319,7 +320,7 @@ func (s *AddressBookService) ListRules(page uint, size uint, f func(tx *gorm.DB)
 }
 
 func (s *AddressBookService) UpdateRule(t *model.AddressBookCollectionRule) error {
-	return DB.Model(t).Updates(t).Error
+	return DB.Model(t).Select("user_id", "collection_id", "rule", "type", "to_id", "expires_at").Updates(t).Error
 }
 
 func (s *AddressBookService) DeleteRule(t *model.AddressBookCollectionRule) error {
@@ -339,4 +340,9 @@ func (s *AddressBookService) BatchUpdateTags(abs []*model.AddressBook, tags []st
 	}
 	tagsv, _ := json.Marshal(tags)
 	return DB.Model(&model.AddressBook{}).Where("row_id in ?", ids).Update("tags", tagsv).Error
+}
+
+func activeCollectionRules(tx *gorm.DB) *gorm.DB {
+	return tx.Where("(expires_at = 0 OR expires_at > ?)", time.Now().Unix()).
+		Where("user_id IN (?)", DB.Model(&model.User{}).Select("id").Where("status = ?", model.COMMON_STATUS_ENABLE))
 }
