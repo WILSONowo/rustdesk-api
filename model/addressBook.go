@@ -56,6 +56,7 @@ type AddressBookCollectionList struct {
 	Pagination
 }
 type AddressBookCollectionRule struct {
+	ExpiresAt int64 `json:"expires_at" gorm:"default:0;not null" validate:"gte=0"`
 	IdModel
 	UserId       uint `json:"user_id" gorm:"default:0;not null;"`
 	CollectionId uint `json:"collection_id" gorm:"default:0;not null;index" validate:"required"`

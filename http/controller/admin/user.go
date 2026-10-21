@@ -6,6 +6,7 @@ import (
 	"github.com/lejianwen/rustdesk-api/v2/http/request/admin"
 	"github.com/lejianwen/rustdesk-api/v2/http/response"
 	adResp "github.com/lejianwen/rustdesk-api/v2/http/response/admin"
+	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/service"
 	"github.com/lejianwen/rustdesk-api/v2/utils"
 	"gorm.io/gorm"
@@ -302,7 +303,7 @@ func (ct *User) GroupUsers(c *gin.Context) {
 	aU := service.AllService.UserService.List(1, 9999, nil)
 	response.Success(c, gin.H{
 		"groups": aG.Groups,
-		"users":  aU.Users,
+		"users":  sharingUserOptions(aU.Users),
 	})
 }
 
@@ -364,4 +365,15 @@ func (ct *User) Review(c *gin.Context) {
 		return
 	}
 	response.Success(c, nil)
+}
+
+// Sharing selectors only need a public label and group membership.
+func sharingUserOptions(users []*model.User) []map[string]interface{} {
+	result := make([]map[string]interface{}, 0, len(users))
+	for _, user := range users {
+		if user.Status == model.COMMON_STATUS_ENABLE {
+			result = append(result, map[string]interface{}{"id": user.Id, "username": user.Username, "group_id": user.GroupId})
+		}
+	}
+	return result
 }
