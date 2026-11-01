@@ -19,3 +19,7 @@ artifacts/
 *.db-shm
 *.tar.gz
 *.zip
+
+# Private working material
+/local-only/
+/docs/local-only/
