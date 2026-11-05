@@ -6,7 +6,7 @@
   },
   "server": {
     "repository": "WILSONowo/rustdesk-server",
-    "tag": "1.1.16-beta3",
-    "commit": "29abeec511bd91d2baca993fba5311ea1ba610b4"
+    "tag": "1.1.16-beta5",
+    "commit": "2112fa7a4d16f5f629c9d5cc03a10caef47c012b"
   }
 }
