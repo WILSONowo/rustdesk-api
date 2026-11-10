@@ -1,8 +1,8 @@
 {
   "web": {
     "repository": "WILSONowo/rustdesk-api-web",
-    "tag": "v1.2.0-beta2",
-    "commit": "378af992dc0a596f1922ee7e6d14fa90a03017d1"
+    "tag": "v1.2.0-beta3",
+    "commit": "a3d5cd086257e7519869a605588d601194376d17"
   },
   "server": {
     "repository": "WILSONowo/rustdesk-server",
