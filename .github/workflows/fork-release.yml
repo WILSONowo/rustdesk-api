@@ -1,13 +1,7 @@
-name: Fork release
+name: Backfill API beta5
 on:
   push:
-    tags: ['v*-beta*']
-  workflow_dispatch:
-    inputs:
-      publish_images:
-        description: Push the reviewed versioned images to GHCR
-        type: boolean
-        default: false
+    branches: ['build/backfill-api-beta5']
 permissions:
   contents: read
 concurrency:
@@ -21,12 +15,15 @@ jobs:
       server_ref: ${{ steps.sources.outputs.server_ref }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: 3f333d0ed9f7cbbde351e25b2144191b1f4a51dd
       - id: sources
         name: Validate version and pinned source commits
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: v2.7-beta5
         run: |
-          test "$GITHUB_REF_TYPE" = tag
+          test "$(git rev-parse HEAD)" = 3f333d0ed9f7cbbde351e25b2144191b1f4a51dd
+          test "$(git ls-remote origin refs/tags/v2.7-beta5 | cut -f1)" = 3f333d0ed9f7cbbde351e25b2144191b1f4a51dd
           test "$RELEASE_TAG" = "$(cat resources/version)"
           python3 - <<'PY'
           import json, os, re
@@ -69,6 +66,8 @@ jobs:
           - {arch: amd64, os: windows, platform: linux/amd64, deb: '', runner: ubuntu-24.04}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: 3f333d0ed9f7cbbde351e25b2144191b1f4a51dd
       - uses: actions/download-artifact@v4
         with:
           name: web-dist
@@ -126,9 +125,8 @@ jobs:
         if: matrix.os == 'linux'
         env:
           DEB_ARCH: ${{ matrix.deb }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y debhelper
           mkdir -p debian-build/package/bin
           cp apimain debian-build/package/bin/rustdesk-api
           cp -a debian systemd conf resources debian-build/package/
@@ -137,9 +135,14 @@ jobs:
           VERSION=$(cat resources/version)
           VERSION=${VERSION#v}
           DEB_VERSION=${VERSION/-beta/~beta}
-          if [ "$DEB_ARCH" != "$(dpkg --print-architecture)" ]; then sudo apt-get install -y "crossbuild-essential-$DEB_ARCH"; fi
           printf 'rustdesk-api-server (%s) unstable; urgency=medium\n\n  * Package release build.\n\n -- GitHub Actions <actions@github.com>  %s\n' "$DEB_VERSION" "$(date -R)" > debian-build/package/debian/changelog
-          (cd debian-build/package && dpkg-buildpackage -us -uc -b -d -a"$DEB_ARCH")
+          docker run --rm --platform "$PLATFORM" -v "$PWD/debian-build:/build" -w /build/package \
+            -e DEB_ARCH="$DEB_ARCH" debian:bookworm-slim sh -ec '
+              test "$(dpkg --print-architecture)" = "$DEB_ARCH"
+              apt-get -o Acquire::Retries=3 update
+              apt-get -o Acquire::Retries=3 install -y --no-install-recommends build-essential debhelper fakeroot
+              dpkg-buildpackage -us -uc -b -d
+            '
           cp debian-build/*.deb release-assets/
       - uses: actions/upload-artifact@v4
         with:
@@ -187,6 +190,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: 3f333d0ed9f7cbbde351e25b2144191b1f4a51dd
           fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
@@ -196,7 +200,7 @@ jobs:
       - name: Prepare complete draft
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: v2.7-beta5
         run: python3 .github/scripts/draft-release.py --tag "$RELEASE_TAG" --assets release-assets --expected 7
   images:
     needs: [sources, binaries, server-binaries]
@@ -213,6 +217,8 @@ jobs:
           - {arch: armv7l, platform: linux/arm/v7, s6: armhf}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: 3f333d0ed9f7cbbde351e25b2144191b1f4a51dd
       - uses: actions/checkout@v4
         with:
           repository: WILSONowo/rustdesk-server
@@ -253,7 +259,7 @@ jobs:
       - name: Push reviewed version only
         if: inputs.publish_images
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: v2.7-beta5
           ARCH: ${{ matrix.arch }}
         run: |
           OWNER=${GITHUB_REPOSITORY_OWNER,,}
@@ -276,7 +282,7 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - name: Publish version manifests without moving latest
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: v2.7-beta5
         run: |
           OWNER=${GITHUB_REPOSITORY_OWNER,,}
           for VARIANT in "$RELEASE_TAG" "$RELEASE_TAG-full-s6"; do
