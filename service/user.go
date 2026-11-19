@@ -57,8 +57,11 @@ func (us *UserService) InfoByUsernamePassword(username, password string) *model.
 		Logger.Errorf("LDAP authentication failed, %v", err)
 		Logger.Warn("Fallback to local database")
 	}
-	u := &model.User{}
-	DB.Where("username = ?", username).First(u)
+	// Prefer an exact match for existing imported accounts with mixed-case names.
+	u := us.InfoByUsername(username)
+	if normalized := us.formatUsername(username); u.Id == 0 && normalized != "" && normalized != username {
+		u = us.InfoByUsername(normalized)
+	}
 	if u.Id == 0 {
 		return u
 	}
