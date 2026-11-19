@@ -18,6 +18,7 @@ const (
 	LoginLogClientWebAdmin = "webadmin"
 	LoginLogClientWeb      = "webclient"
 	LoginLogClientApp      = "app"
+	LoginLogClientNative   = "client"
 )
 
 const (

@@ -43,7 +43,7 @@ func RustAuth() gin.HandlerFunc {
 			}
 		}
 
-		user, ut := service.AllService.UserService.InfoByAccessToken(token)
+		user, ut := service.AllService.UserService.InfoByClientToken(token)
 		if user.Id == 0 {
 			c.JSON(401, gin.H{
 				"error": "Unauthorized",

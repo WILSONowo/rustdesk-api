@@ -13,6 +13,7 @@ import (
 	"github.com/lejianwen/rustdesk-api/v2/model"
 	"github.com/lejianwen/rustdesk-api/v2/utils"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type UserService struct {
@@ -74,13 +75,22 @@ func (us *UserService) InfoByUsernamePassword(username, password string) *model.
 
 // InfoByAccesstoken 根据accesstoken取用户信息
 func (us *UserService) InfoByAccessToken(token string) (*model.User, *model.UserToken) {
+	return us.infoByAccessToken(token, false)
+}
+
+// InfoByClientToken also accepts sessions issued exclusively for the native API.
+func (us *UserService) InfoByClientToken(token string) (*model.User, *model.UserToken) {
+	return us.infoByAccessToken(token, true)
+}
+
+func (us *UserService) infoByAccessToken(token string, allowNative bool) (*model.User, *model.UserToken) {
 	u := &model.User{}
 	ut := &model.UserToken{}
 	DB.Where("token = ?", token).First(ut)
 	if ut.Id == 0 {
 		return u, ut
 	}
-	if ut.ExpiredAt < time.Now().Unix() {
+	if ut.ExpiredAt < time.Now().Unix() && !(allowNative && ut.ExpiredAt == model.NativeSessionNoExpiry) {
 		return u, ut
 	}
 	DB.Where("id = ?", ut.UserId).First(u)
@@ -88,8 +98,11 @@ func (us *UserService) InfoByAccessToken(token string) (*model.User, *model.User
 }
 
 // GenerateToken 生成token
-func (us *UserService) GenerateToken(u *model.User) string {
+func (us *UserService) generateToken(u *model.User, native bool) string {
 	if Jwt != nil && len(Jwt.Key) > 0 {
+		if native {
+			return Jwt.GenerateNativeToken(u.Id)
+		}
 		return Jwt.GenerateToken(u.Id)
 	}
 	var secret [32]byte
@@ -102,10 +115,15 @@ func (us *UserService) GenerateToken(u *model.User) string {
 
 // Login 登录
 func (us *UserService) Login(u *model.User, llog *model.LoginLog) *model.UserToken {
-	if u == nil || u.Id == 0 || llog == nil || !us.CheckUserEnable(us.InfoById(u.Id)) {
+	if u == nil || u.Id == 0 || llog == nil {
 		return nil
 	}
-	token := us.GenerateToken(u)
+	native := llog.Client == model.LoginLogClientNative || llog.Client == model.LoginLogClientApp
+	expiresAt := us.UserTokenExpireTimestamp()
+	if native {
+		expiresAt = model.NativeSessionNoExpiry
+	}
+	token := us.generateToken(u, native)
 	if token == "" {
 		return nil
 	}
@@ -114,9 +132,17 @@ func (us *UserService) Login(u *model.User, llog *model.LoginLog) *model.UserTok
 		Token:      token,
 		DeviceUuid: llog.Uuid,
 		DeviceId:   llog.DeviceId,
-		ExpiredAt:  us.UserTokenExpireTimestamp(),
+		ExpiredAt:  expiresAt,
 	}
 	if err := DB.Transaction(func(tx *gorm.DB) error {
+		// Serialize issuance with account disablement and its session revocation.
+		var account model.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "status").First(&account, u.Id).Error; err != nil {
+			return err
+		}
+		if !us.CheckUserEnable(&account) {
+			return errors.New("account disabled")
+		}
 		if err := tx.Create(ut).Error; err != nil {
 			return err
 		}
@@ -618,6 +644,9 @@ func (us *UserService) RefreshAccessToken(ut *model.UserToken) {
 }
 
 func (us *UserService) AutoRefreshAccessToken(ut *model.UserToken) {
+	if ut.ExpiredAt == model.NativeSessionNoExpiry {
+		return
+	}
 	if ut.ExpiredAt-time.Now().Unix() < Config.App.TokenExpire.Milliseconds()/3000 {
 		us.RefreshAccessToken(ut)
 	}

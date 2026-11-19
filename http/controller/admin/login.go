@@ -240,7 +240,7 @@ func (ct *Login) OidcAuth(c *gin.Context) {
 // @Router /admin/oidc/auth-query [get]
 func (ct *Login) OidcAuthQuery(c *gin.Context) {
 	o := &api.Oauth{}
-	u, ut := o.OidcAuthQueryPre(c)
+	u, ut := o.OidcAuthQueryPre(c, true)
 	if ut == nil {
 		return
 	}

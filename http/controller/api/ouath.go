@@ -34,6 +34,9 @@ func (o *Oauth) OidcAuth(c *gin.Context) {
 		return
 	}
 
+	if c.GetHeader("Referer") != "" {
+		f.DeviceInfo.Type = model.LoginLogClientWeb
+	}
 	oauthService := service.AllService.OauthService
 
 	err, state, verifier, nonce, url := oauthService.BeginAuth(f.Op)
@@ -60,7 +63,7 @@ func (o *Oauth) OidcAuth(c *gin.Context) {
 	})
 }
 
-func (o *Oauth) OidcAuthQueryPre(c *gin.Context) (*model.User, *model.UserToken) {
+func (o *Oauth) OidcAuthQueryPre(c *gin.Context, webAdmin bool) (*model.User, *model.UserToken) {
 	var u *model.User
 	var ut *model.UserToken
 	q := &api.OidcAuthQuery{}
@@ -73,7 +76,7 @@ func (o *Oauth) OidcAuthQueryPre(c *gin.Context) (*model.User, *model.UserToken)
 
 	// 获取 OAuth 缓存
 	v := service.AllService.OauthService.GetOauthCache(q.Code)
-	if v == nil {
+	if v == nil || webAdmin != (v.DeviceType == model.LoginLogClientWebAdmin) {
 		response.Error(c, response.TranslateMsg(c, "OauthExpired"))
 		return nil, nil
 	}
@@ -129,7 +132,7 @@ func (o *Oauth) OidcAuthQueryPre(c *gin.Context) (*model.User, *model.UserToken)
 // @Failure 500 {object} response.ErrorResponse
 // @Router /oidc/auth-query [get]
 func (o *Oauth) OidcAuthQuery(c *gin.Context) {
-	u, ut := o.OidcAuthQueryPre(c)
+	u, ut := o.OidcAuthQueryPre(c, false)
 	if u == nil || ut == nil {
 		return
 	}

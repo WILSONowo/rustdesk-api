@@ -1,5 +1,8 @@
 package model
 
+// NativeSessionNoExpiry is reserved for newly issued persistent client sessions.
+const NativeSessionNoExpiry int64 = -1
+
 type UserToken struct {
 	IdModel
 	UserId     uint   `json:"user_id" gorm:"default:0;not null;index"`

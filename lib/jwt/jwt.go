@@ -3,6 +3,7 @@ package jwt
 import (
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"time"
 )
 
@@ -24,16 +25,26 @@ func NewJwt(key string, tokenExpireDuration time.Duration) *Jwt {
 }
 
 func (s *Jwt) GenerateToken(userId uint) string {
+	return s.sign(userId, jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(time.Now().Add(s.TokenExpireDuration))})
+}
+
+func (s *Jwt) GenerateNativeToken(userId uint) string {
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return ""
+	}
+	return s.sign(userId, jwt.RegisteredClaims{ID: id.String()})
+}
+
+func (s *Jwt) sign(userId uint, claims jwt.RegisteredClaims) string {
 	if len(s.Key) == 0 {
 		fmt.Println("jwt key is nil")
 		return ""
 	}
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256,
 		UserClaims{
-			UserId: userId,
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(s.TokenExpireDuration)),
-			},
+			UserId:           userId,
+			RegisteredClaims: claims,
 		})
 	token, err := t.SignedString(s.Key)
 	if err != nil {
